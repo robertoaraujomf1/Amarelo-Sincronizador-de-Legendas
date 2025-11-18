@@ -1,8 +1,8 @@
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
+from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                             QComboBox, QPushButton, QGroupBox, QCheckBox,
                             QListWidget, QMessageBox)
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QGuiApplication
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QGuiApplication
 
 class SettingsDialog(QDialog):
     def __init__(self, config, language_manager, parent=None):

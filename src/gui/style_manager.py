@@ -1,5 +1,4 @@
-from PyQt6.QtCore import QFile, QTextStream
-
+from PySide6.QtCore import QFile, QTextStream
 class StyleManager:
     def __init__(self):
         self.styles = {}

@@ -1,9 +1,9 @@
 import sys
 import os
 import ctypes
-from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import QTranslator, QLocale
-from PyQt6.QtGui import QIcon
+from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QTranslator, QLocale
+from PySide6.QtGui import QIcon
 
 from src.gui.main_window import MainWindow
 from src.utils.config_manager import ConfigManager

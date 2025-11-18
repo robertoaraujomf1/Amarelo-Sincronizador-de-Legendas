@@ -1,9 +1,9 @@
-from PyQt6.QtWidgets import (QMainWindow, QVBoxLayout, QHBoxLayout, QPushButton, 
+from PySide6.QtWidgets import (QMainWindow, QVBoxLayout, QHBoxLayout, QPushButton, 
                             QLabel, QLineEdit, QFileDialog, QProgressBar, QTextEdit,
                             QGroupBox, QComboBox, QSpinBox, QColorDialog, QMessageBox,
                             QTabWidget, QWidget, QFrame, QCheckBox)
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QFont, QColor, QPalette, QPixmap, QGuiApplication
+from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtGui import QFont, QColor, QPalette, QPixmap, QGuiApplication
 import os
 import json
 
@@ -12,8 +12,8 @@ from src.gui.settings_dialog import SettingsDialog
 from src.gui.style_manager import StyleManager
 
 class SyncThread(QThread):
-    progress_updated = pyqtSignal(int, str)
-    finished = pyqtSignal(bool, str)
+    progress_updated = Signal(int, str)  # MUDOU: pyqtSignal -> Signal
+    finished = Signal(bool, str)         # MUDOU: pyqtSignal -> Signal
     
     def __init__(self, directory, subtitle_settings):
         super().__init__()
