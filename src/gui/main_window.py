@@ -6,9 +6,9 @@ from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QFont, QColor, QPalette, QPixmap, QGuiApplication
 import os
 import json
-
+from PySide6.QtGui import QFont, QColor, QPalette, QPixmap, QGuiApplication, QFontDatabase
 from src.core.subtitle_sync import SubtitleSyncEngine
-from src.gui.settings_dialog import SettingsDialog
+from .settings_dialog import SettingsDialog
 from src.gui.style_manager import StyleManager
 
 class SyncThread(QThread):
@@ -169,7 +169,7 @@ class MainWindow(QMainWindow):
         self.font_combo = QComboBox()
         
         # Obter fontes do sistema
-        font_database = QGuiApplication.fontDatabase()
+        font_database = QFontDatabase()
         system_fonts = font_database.families()
         common_fonts = ["Arial", "Segoe UI", "Times New Roman", "Verdana", "Tahoma", 
                        "Calibri", "Microsoft Sans Serif", "Courier New"]
