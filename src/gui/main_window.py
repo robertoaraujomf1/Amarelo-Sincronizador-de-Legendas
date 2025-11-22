@@ -3,17 +3,17 @@ from PySide6.QtWidgets import (QMainWindow, QVBoxLayout, QHBoxLayout, QPushButto
                             QGroupBox, QComboBox, QSpinBox, QColorDialog, QMessageBox,
                             QTabWidget, QWidget, QFrame, QCheckBox)
 from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtGui import QFont, QColor, QPalette, QPixmap, QGuiApplication
+from PySide6.QtGui import QFont, QColor, QPalette, QPixmap, QGuiApplication, QFontDatabase, QIcon
 import os
 import json
-from PySide6.QtGui import QFont, QColor, QPalette, QPixmap, QGuiApplication, QFontDatabase
+
 from src.core.subtitle_sync import SubtitleSyncEngine
-from .settings_dialog import SettingsDialog
+from src.gui.settings_dialog import SettingsDialog
 from src.gui.style_manager import StyleManager
 
 class SyncThread(QThread):
-    progress_updated = Signal(int, str)  # MUDOU: pyqtSignal -> Signal
-    finished = Signal(bool, str)         # MUDOU: pyqtSignal -> Signal
+    progress_updated = Signal(int, str)
+    finished = Signal(bool, str)
     
     def __init__(self, directory, subtitle_settings):
         super().__init__()
@@ -60,14 +60,21 @@ class SyncThread(QThread):
             self.finished.emit(False, f"Erro durante a sincronização: {str(e)}")
 
 class MainWindow(QMainWindow):
-    def __init__(self, config, language_manager):
+    def __init__(self, config, language_manager, app_icon):
         super().__init__()
         self.config = config
         self.language_manager = language_manager
+        self.app_icon = app_icon
         self.sync_thread = None
         self.current_directory = ""
         
+        # AUMENTAR FONTE GLOBAL
+        font = self.font()
+        font.setPointSize(11)
+        self.setFont(font)
+        
         self.setWindowTitle("Amarelo Sincronizador de Legendas")
+        self.setWindowIcon(self.app_icon)
         self.setMinimumSize(900, 700)
         
         # Aplicar estilo
@@ -87,9 +94,7 @@ class MainWindow(QMainWindow):
         main_layout.setSpacing(20)
         main_layout.setContentsMargins(30, 30, 30, 30)
         
-        # Cabeçalho com logo e título
-        header_layout = self.create_header()
-        main_layout.addLayout(header_layout)
+        # REMOVIDO: Cabeçalho com título
         
         # Seção de seleção de pasta
         folder_section = self.create_folder_section()
@@ -111,28 +116,6 @@ class MainWindow(QMainWindow):
         button_layout = self.create_action_buttons()
         main_layout.addLayout(button_layout)
         
-    def create_header(self):
-        layout = QHBoxLayout()
-        
-        # Logo/Ícone
-        icon_label = QLabel()
-        if os.path.exists("assets/icons/app_icon.png"):
-            pixmap = QPixmap("assets/icons/app_icon.png")
-            icon_label.setPixmap(pixmap.scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio))
-        layout.addWidget(icon_label)
-        
-        # Título
-        title_label = QLabel("Amarelo Sincronizador de Legendas")
-        title_font = QFont()
-        title_font.setPointSize(20)
-        title_font.setBold(True)
-        title_label.setFont(title_font)
-        title_label.setStyleSheet("color: #FF9800;")
-        layout.addWidget(title_label)
-        layout.addStretch()
-        
-        return layout
-    
     def create_folder_section(self):
         group = QGroupBox("Seleção de Pasta")
         layout = QVBoxLayout(group)
@@ -143,6 +126,9 @@ class MainWindow(QMainWindow):
         folder_layout.addWidget(self.folder_path)
         
         browse_btn = QPushButton("Procurar...")
+        # Adicionar ícone de pasta
+        if os.path.exists("assets/icons/folder_icon.png"):
+            browse_btn.setIcon(QIcon("assets/icons/folder_icon.png"))
         browse_btn.clicked.connect(self.browse_folder)
         folder_layout.addWidget(browse_btn)
         
@@ -154,7 +140,7 @@ class MainWindow(QMainWindow):
             "Não mova, renomeie ou exclua arquivos até que a análise seja concluída."
         )
         info_label.setWordWrap(True)
-        info_label.setStyleSheet("color: #FF6B35; background-color: #FFF3E0; padding: 10px; border-radius: 5px;")
+        info_label.setStyleSheet("color: #FF6B35; background-color: #FFF3E0; padding: 10px; border-radius: 5px; font-size: 12px;")
         layout.addWidget(info_label)
         
         return group
@@ -179,7 +165,7 @@ class MainWindow(QMainWindow):
                 self.font_combo.addItem(font)
         
         if self.font_combo.count() == 0 and system_fonts:
-            for font in system_fonts[:10]:  # Limitar a 10 fontes
+            for font in system_fonts[:10]:
                 self.font_combo.addItem(font)
         
         font_layout.addWidget(self.font_combo)
@@ -238,6 +224,9 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout()
         
         self.sync_btn = QPushButton("Iniciar Sincronização")
+        # Adicionar ícone de sincronização
+        if os.path.exists("assets/icons/sync_icon.png"):
+            self.sync_btn.setIcon(QIcon("assets/icons/sync_icon.png"))
         self.sync_btn.clicked.connect(self.start_sync)
         self.sync_btn.setStyleSheet("""
             QPushButton {
@@ -247,6 +236,7 @@ class MainWindow(QMainWindow):
                 padding: 10px 20px;
                 font-size: 14px;
                 border-radius: 5px;
+                font-weight: bold;
             }
             QPushButton:hover {
                 background-color: #45a049;
@@ -257,6 +247,10 @@ class MainWindow(QMainWindow):
         """)
         
         settings_btn = QPushButton("Configurações")
+        # Adicionar ícone de configurações
+        if os.path.exists("assets/icons/settings_icon.png"):
+            settings_btn.setIcon(QIcon("assets/icons/settings_icon.png"))
+        settings_btn.setStyleSheet("font-size: 14px; font-weight: bold;")
         settings_btn.clicked.connect(self.open_settings)
         
         layout.addWidget(self.sync_btn)
@@ -276,7 +270,7 @@ class MainWindow(QMainWindow):
             if folder in recent_folders:
                 recent_folders.remove(folder)
             recent_folders.insert(0, folder)
-            recent_folders = recent_folders[:5]  # Manter apenas as 5 mais recentes
+            recent_folders = recent_folders[:5]
             self.config.set_setting('recent_folders', recent_folders)
     
     def choose_color(self):
@@ -339,11 +333,9 @@ class MainWindow(QMainWindow):
     def open_settings(self):
         dialog = SettingsDialog(self.config, self.language_manager, self)
         if dialog.exec():
-            # Recarregar configurações
             self.load_settings()
     
     def load_settings(self):
-        # Carregar configurações salvas
         font_family = self.config.get_setting('font_family', 'Arial')
         font_size = self.config.get_setting('font_size', 16)
         font_color = self.config.get_setting('font_color', '#FFFFFF')

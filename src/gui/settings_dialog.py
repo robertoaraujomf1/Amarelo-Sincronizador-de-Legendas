@@ -2,7 +2,7 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                             QComboBox, QPushButton, QGroupBox, QCheckBox,
                             QListWidget, QMessageBox)
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QGuiApplication, QFont
 
 class SettingsDialog(QDialog):
     def __init__(self, config, language_manager, parent=None):
@@ -10,6 +10,11 @@ class SettingsDialog(QDialog):
         self.config = config
         self.language_manager = language_manager
         self.parent = parent
+        
+        # AUMENTAR FONTE GLOBAL
+        font = self.font()
+        font.setPointSize(11)
+        self.setFont(font)
         
         self.setWindowTitle("Configurações")
         self.setFixedSize(500, 400)
@@ -64,6 +69,7 @@ class SettingsDialog(QDialog):
         recent_layout.addWidget(self.recent_list)
         
         clear_recent_btn = QPushButton("Limpar Lista")
+        clear_recent_btn.setStyleSheet("font-size: 14px; font-weight: bold;")
         clear_recent_btn.clicked.connect(self.clear_recent_folders)
         recent_layout.addWidget(clear_recent_btn)
         
@@ -73,9 +79,11 @@ class SettingsDialog(QDialog):
         button_layout = QHBoxLayout()
         
         save_btn = QPushButton("Salvar")
+        save_btn.setStyleSheet("font-size: 14px; font-weight: bold;")
         save_btn.clicked.connect(self.save_settings)
         
         cancel_btn = QPushButton("Cancelar")
+        cancel_btn.setStyleSheet("font-size: 14px; font-weight: bold;")
         cancel_btn.clicked.connect(self.reject)
         
         button_layout.addStretch()

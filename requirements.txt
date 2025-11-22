@@ -3,4 +3,5 @@ opencv-python-headless==4.7.0.72
 pysrt==1.1.2
 moviepy==1.0.3
 pydub==0.25.1
-chardet==5.2.0
+speechrecognition==3.10.0
+googletrans==3.0.0

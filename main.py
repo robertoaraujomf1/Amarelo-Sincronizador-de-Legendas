@@ -1,6 +1,7 @@
 import sys
 import os
-import ctypes
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QTranslator, QLocale
 from PySide6.QtGui import QIcon
@@ -10,18 +11,18 @@ from src.utils.config_manager import ConfigManager
 from src.utils.language_manager import LanguageManager
 
 def main():
-    # Evitar múltiplas instâncias
-    app_id = 'AmareloSincronizadorLegendas.1.0'
-    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
-    
     app = QApplication(sys.argv)
-    app.setApplicationName("Amarelo Sincronizador de Legendas")
-    app.setApplicationVersion("1.0.0")
     
-    # Configurar ícone
+    # Configurar ícone ANTES de criar a janela
+    app_icon = QIcon()
     if os.path.exists("assets/icons/app_icon.ico"):
         app_icon = QIcon("assets/icons/app_icon.ico")
-        app.setWindowIcon(app_icon)
+    elif os.path.exists("assets/icons/app_icon.png"):
+        app_icon = QIcon("assets/icons/app_icon.png")
+    
+    app.setWindowIcon(app_icon)
+    app.setApplicationName("Amarelo Sincronizador de Legendas")
+    app.setApplicationVersion("1.0.0")
     
     # Carregar configurações
     config = ConfigManager()
@@ -48,8 +49,8 @@ def main():
         apply_dark_theme(app)
     
     # Criar e mostrar janela principal
-    window = MainWindow(config, language_manager)
-    window.show()
+    window = MainWindow(config, language_manager, app_icon)
+    window.showMaximized()
     
     sys.exit(app.exec())
 

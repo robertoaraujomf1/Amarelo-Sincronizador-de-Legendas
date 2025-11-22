@@ -9,6 +9,9 @@ from .video_analyzer import VideoAnalyzer
 from .file_matcher import FileMatcher
 from .file_locker import FileLocker
 from .subtitle_editor import SubtitleEditor
+from .audio_transcriber import AudioTranscriber
+from .translator import SubtitleTranslator
+from .subtitle_generator import SubtitleGenerator
 
 class SubtitleSyncEngine:
     def __init__(self):
@@ -16,6 +19,9 @@ class SubtitleSyncEngine:
         self.file_matcher = FileMatcher()
         self.file_locker = FileLocker()
         self.subtitle_editor = SubtitleEditor()
+        self.audio_transcriber = AudioTranscriber()
+        self.translator = SubtitleTranslator()
+        self.subtitle_generator = SubtitleGenerator()
         
         self.supported_video_extensions = ['.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm']
         self.supported_subtitle_extensions = ['.srt', '.vtt', '.ass', '.ssa']
@@ -23,6 +29,60 @@ class SubtitleSyncEngine:
     def find_video_subtitle_pairs(self, directory):
         """Encontra pares de vídeo e legenda no diretório"""
         return self.file_matcher.find_pairs(directory)
+    
+    def create_missing_subtitles(self, directory, target_language='pt_BR'):
+        """Cria legendas faltantes através de transcrição e tradução"""
+        try:
+            # Encontrar vídeos sem legendas
+            video_files = []
+            subtitle_files = []
+            
+            for file in os.listdir(directory):
+                file_path = os.path.join(directory, file)
+                if os.path.isfile(file_path):
+                    name, ext = os.path.splitext(file)
+                    if ext.lower() in self.supported_video_extensions:
+                        video_files.append((name, file_path))
+                    elif ext.lower() in self.supported_subtitle_extensions:
+                        subtitle_files.append((name, file_path))
+            
+            # Encontrar vídeos sem legendas correspondentes
+            videos_without_subs = []
+            for video_name, video_path in video_files:
+                has_subtitle = False
+                for subtitle_name, subtitle_path in subtitle_files:
+                    if self.file_matcher.names_match(video_name, subtitle_name):
+                        has_subtitle = True
+                        break
+                if not has_subtitle:
+                    videos_without_subs.append((video_name, video_path))
+            
+            created_count = 0
+            for video_name, video_path in videos_without_subs:
+                # Analisar vídeo para obter duração
+                video_info = self.video_analyzer.analyze_video(video_path)
+                if not video_info:
+                    continue
+                
+                # Transcrever áudio
+                language_code = self.translator.get_language_code(target_language)
+                transcription = self.audio_transcriber.transcribe_video(video_path, f"{language_code}-{language_code.upper()}")
+                
+                if transcription:
+                    # Criar nome do arquivo de legenda
+                    subtitle_path = os.path.join(directory, f"{video_name}.{language_code}.srt")
+                    
+                    # Gerar legenda
+                    if self.subtitle_generator.create_subtitle_from_transcription(
+                        transcription, video_info['duration'], subtitle_path, target_language
+                    ):
+                        created_count += 1
+            
+            return created_count
+            
+        except Exception as e:
+            print(f"Erro ao criar legendas faltantes: {str(e)}")
+            return 0
     
     def analyze_and_sync(self, video_path, subtitle_path, subtitle_settings):
         """Analisa e sincroniza um par vídeo-legenda"""
