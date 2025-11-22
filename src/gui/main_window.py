@@ -148,9 +148,11 @@ class MainWindow(QMainWindow):
     def create_subtitle_settings(self):
         group = QGroupBox("Configurações de Legenda")
         layout = QVBoxLayout(group)
+        layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
         
         # Fonte
         font_layout = QHBoxLayout()
+        font_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
         font_layout.addWidget(QLabel("Fonte:"))
         self.font_combo = QComboBox()
         
@@ -192,6 +194,7 @@ class MainWindow(QMainWindow):
         )
         format_info.setWordWrap(True)
         format_info.setStyleSheet("color: #666; font-size: 12px; padding: 5px;")
+        format_info.setAlignment(Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(format_info)
         
         return group
