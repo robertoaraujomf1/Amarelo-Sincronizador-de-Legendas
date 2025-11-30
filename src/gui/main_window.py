@@ -2,7 +2,7 @@ from PySide6.QtWidgets import (QMainWindow, QVBoxLayout, QHBoxLayout, QPushButto
                             QLabel, QLineEdit, QFileDialog, QProgressBar, QTextEdit,
                             QGroupBox, QComboBox, QSpinBox, QColorDialog, QMessageBox,
                             QTabWidget, QWidget, QFrame, QCheckBox)
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal, QSize
 from PySide6.QtGui import QFont, QColor, QPalette, QPixmap, QGuiApplication, QFontDatabase, QIcon
 import os
 import json
@@ -125,10 +125,24 @@ class MainWindow(QMainWindow):
         self.folder_path.setPlaceholderText("Selecione a pasta contendo os vídeos e legendas...")
         folder_layout.addWidget(self.folder_path)
         
-        browse_btn = QPushButton("Procurar...")
+        browse_btn = QPushButton()
+        browse_btn.setFixedSize(120, 100)  # BOTÃO AINDA MAIOR
         # Adicionar ícone de pasta
         if os.path.exists("assets/icons/folder_icon.png"):
-            browse_btn.setIcon(QIcon("assets/icons/folder_icon.png"))
+            pixmap = QPixmap("assets/icons/folder_icon.png")
+            scaled_pixmap = pixmap.scaled(110, 90, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            browse_btn.setIcon(QIcon(scaled_pixmap))
+            browse_btn.setIconSize(QSize(110, 90))
+        browse_btn.setStyleSheet("""
+            QPushButton {
+                border: none;
+                background-color: transparent;
+            }
+            QPushButton:hover {
+                background-color: #e0e0e0;
+                border-radius: 10px;
+            }
+        """)
         browse_btn.clicked.connect(self.browse_folder)
         folder_layout.addWidget(browse_btn)
         
@@ -226,34 +240,47 @@ class MainWindow(QMainWindow):
     def create_action_buttons(self):
         layout = QHBoxLayout()
         
-        self.sync_btn = QPushButton("Iniciar Sincronização")
+        self.sync_btn = QPushButton()
+        self.sync_btn.setFixedSize(180, 140)  # BOTÃO AINDA MAIOR
         # Adicionar ícone de sincronização
         if os.path.exists("assets/icons/sync_icon.png"):
-            self.sync_btn.setIcon(QIcon("assets/icons/sync_icon.png"))
-        self.sync_btn.clicked.connect(self.start_sync)
+            pixmap = QPixmap("assets/icons/sync_icon.png")
+            scaled_pixmap = pixmap.scaled(170, 130, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            self.sync_btn.setIcon(QIcon(scaled_pixmap))
+            self.sync_btn.setIconSize(QSize(170, 130))
         self.sync_btn.setStyleSheet("""
             QPushButton {
-                background-color: #4CAF50;
-                color: white;
                 border: none;
-                padding: 10px 20px;
-                font-size: 14px;
-                border-radius: 5px;
-                font-weight: bold;
+                background-color: transparent;
             }
             QPushButton:hover {
-                background-color: #45a049;
+                background-color: #e0e0e0;
+                border-radius: 15px;
             }
             QPushButton:disabled {
-                background-color: #cccccc;
+                background-color: #f0f0f0;
             }
         """)
+        self.sync_btn.clicked.connect(self.start_sync)
         
-        settings_btn = QPushButton("Configurações")
+        settings_btn = QPushButton()
+        settings_btn.setFixedSize(160, 120)  # BOTÃO AINDA MAIOR
         # Adicionar ícone de configurações
         if os.path.exists("assets/icons/settings_icon.png"):
-            settings_btn.setIcon(QIcon("assets/icons/settings_icon.png"))
-        settings_btn.setStyleSheet("font-size: 14px; font-weight: bold;")
+            pixmap = QPixmap("assets/icons/settings_icon.png")
+            scaled_pixmap = pixmap.scaled(150, 110, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            settings_btn.setIcon(QIcon(scaled_pixmap))
+            settings_btn.setIconSize(QSize(150, 110))
+        settings_btn.setStyleSheet("""
+            QPushButton {
+                border: none;
+                background-color: transparent;
+            }
+            QPushButton:hover {
+                background-color: #e0e0e0;
+                border-radius: 10px;
+            }
+        """)
         settings_btn.clicked.connect(self.open_settings)
         
         layout.addWidget(self.sync_btn)
