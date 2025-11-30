@@ -1,9 +1,9 @@
 from PySide6.QtWidgets import (QMainWindow, QVBoxLayout, QHBoxLayout, QPushButton, 
                             QLabel, QLineEdit, QFileDialog, QProgressBar, QTextEdit,
                             QGroupBox, QComboBox, QSpinBox, QColorDialog, QMessageBox,
-                            QTabWidget, QWidget, QFrame, QCheckBox)
+                            QTabWidget, QWidget, QFrame, QCheckBox, QApplication)
 from PySide6.QtCore import Qt, QThread, Signal, QSize
-from PySide6.QtGui import QFont, QColor, QPalette, QPixmap, QGuiApplication, QFontDatabase, QIcon
+from PySide6.QtGui import QFont, QColor, QPalette, QPixmap, QGuiApplication, QFontDatabase, QIcon, QFontMetrics
 import os
 import json
 
@@ -59,6 +59,21 @@ class SyncThread(QThread):
         except Exception as e:
             self.finished.emit(False, f"Erro durante a sincronização: {str(e)}")
 
+class FontComboBox(QComboBox):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setStyleSheet("""
+            QComboBox {
+                combobox-popup: 0;
+                max-height: 200px;
+            }
+            QComboBox QAbstractItemView {
+                border: 1px solid #ccc;
+                background-color: white;
+                selection-background-color: #e6f3ff;
+            }
+        """)
+
 class MainWindow(QMainWindow):
     def __init__(self, config, language_manager, app_icon):
         super().__init__()
@@ -80,6 +95,11 @@ class MainWindow(QMainWindow):
         # Aplicar estilo
         self.style_manager = StyleManager()
         self.apply_styles()
+        
+        # Inicializar log_text antes de setup_ui
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setMaximumHeight(200)
         
         self.setup_ui()
         self.load_settings()
@@ -168,21 +188,14 @@ class MainWindow(QMainWindow):
         font_layout = QHBoxLayout()
         font_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
         font_layout.addWidget(QLabel("Fonte:"))
-        self.font_combo = QComboBox()
         
-        # Obter fontes do sistema
-        font_database = QFontDatabase()
-        system_fonts = font_database.families()
-        common_fonts = ["Arial", "Segoe UI", "Times New Roman", "Verdana", "Tahoma", 
-                       "Calibri", "Microsoft Sans Serif", "Courier New"]
+        # Usar o novo FontComboBox customizado
+        self.font_combo = FontComboBox()
+        self.font_combo.setMinimumWidth(250)
+        self.font_combo.setMaxVisibleItems(15)
         
-        for font in common_fonts:
-            if font in system_fonts:
-                self.font_combo.addItem(font)
-        
-        if self.font_combo.count() == 0 and system_fonts:
-            for font in system_fonts[:10]:
-                self.font_combo.addItem(font)
+        # Carregar TODAS as fontes do sistema
+        self.load_system_fonts()
         
         font_layout.addWidget(self.font_combo)
         
@@ -201,6 +214,27 @@ class MainWindow(QMainWindow):
         
         layout.addLayout(font_layout)
         
+        # Preview da fonte
+        preview_layout = QHBoxLayout()
+        preview_layout.addWidget(QLabel("Preview:"))
+        self.font_preview_label = QLabel("AaBbCc 123 @#$")
+        self.font_preview_label.setStyleSheet("""
+            QLabel {
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                padding: 8px;
+                border-radius: 4px;
+                min-width: 200px;
+            }
+        """)
+        preview_layout.addWidget(self.font_preview_label)
+        preview_layout.addStretch()
+        layout.addLayout(preview_layout)
+        
+        # Conectar a mudança de fonte para atualizar o preview
+        self.font_combo.currentTextChanged.connect(self.update_font_preview)
+        self.font_size.valueChanged.connect(self.on_font_size_changed)
+        
         # Informações sobre formatação
         format_info = QLabel(
             "📝 As legendas serão centralizadas na parte inferior. "
@@ -212,6 +246,111 @@ class MainWindow(QMainWindow):
         layout.addWidget(format_info)
         
         return group
+    
+    def load_system_fonts(self):
+        """Carrega TODAS as fontes do sistema e as exibe com sua aparência real"""
+        try:
+            # Obter todas as famílias de fontes do sistema
+            font_database = QFontDatabase()
+            all_font_families = font_database.families()
+            
+            # Ordenar as fontes alfabeticamente
+            sorted_fonts = sorted(all_font_families)
+            
+            self.font_combo.clear()
+            
+            # Adicionar cada fonte com sua aparência real
+            for font_family in sorted_fonts:
+                # Verificar se a fonte tem suporte a caracteres latinos básicos
+                if self.has_latin_support(font_family):
+                    self.font_combo.addItem(font_family)
+                    
+                    # Definir a fonte para o item (ícone no combobox)
+                    index = self.font_combo.count() - 1
+                    self.font_combo.setItemData(index, QFont(font_family, 10), Qt.ItemDataRole.FontRole)
+            
+            # Se não conseguiu carregar fontes, usar fallback
+            if self.font_combo.count() == 0:
+                self.load_fallback_fonts()
+                
+            # Usar messagebox em vez de log_text que pode não estar pronto
+            if hasattr(self, 'log_text') and self.log_text:
+                self.log_text.append(f"✅ Carregadas {self.font_combo.count()} fontes do sistema")
+            
+        except Exception as e:
+            # Usar messagebox em caso de erro durante inicialização
+            if hasattr(self, 'log_text') and self.log_text:
+                self.log_text.append(f"❌ Erro ao carregar fontes: {str(e)}")
+            self.load_fallback_fonts()
+    
+    def has_latin_support(self, font_family):
+        """Verifica se a fonte tem suporte a caracteres latinos básicos"""
+        try:
+            # Criar fonte de teste
+            test_font = QFont(font_family, 10)
+            test_font_metrics = QFontMetrics(test_font)
+            
+            # Testar com caracteres latinos básicos
+            test_string = "AaBbCc"
+            
+            # Se a fonte não suportar os caracteres, retornará uma métrica diferente
+            # ou largura zero para alguns caracteres
+            width = test_font_metrics.horizontalAdvance(test_string)
+            
+            # Se a largura for zero ou muito pequena, a fonte provavelmente não suporta latim
+            return width > 20
+            
+        except:
+            return True  # Em caso de erro, assume que tem suporte
+    
+    def load_fallback_fonts(self):
+        """Carrega fontes fallback caso não consiga obter as do sistema"""
+        fallback_fonts = [
+            "Arial", "Segoe UI", "Times New Roman", "Verdana", "Tahoma",
+            "Calibri", "Microsoft Sans Serif", "Courier New", "Georgia",
+            "Impact", "Comic Sans MS", "Trebuchet MS", "Arial Black",
+            "Palatino Linotype", "Lucida Sans Unicode", "Franklin Gothic Medium"
+        ]
+        
+        for font in fallback_fonts:
+            self.font_combo.addItem(font)
+            index = self.font_combo.count() - 1
+            self.font_combo.setItemData(index, QFont(font, 10), Qt.ItemDataRole.FontRole)
+    
+    def update_font_preview(self, font_family):
+        """Atualiza o preview da fonte selecionada"""
+        try:
+            font_size = self.font_size.value()
+            preview_font = QFont(font_family, font_size)
+            self.font_preview_label.setFont(preview_font)
+            
+            # Atualizar também a cor se estiver definida
+            current_style = self.font_preview_label.styleSheet()
+            if "color:" in current_style:
+                # Manter a cor atual se existir
+                pass
+            else:
+                # Definir cor padrão para contraste
+                self.font_preview_label.setStyleSheet(f"""
+                    QLabel {{
+                        background-color: #f8f9fa;
+                        border: 1px solid #dee2e6;
+                        padding: 8px;
+                        border-radius: 4px;
+                        min-width: 200px;
+                        color: #000000;
+                    }}
+                """)
+                
+        except Exception as e:
+            # Em caso de erro, usar fonte padrão
+            self.font_preview_label.setFont(QFont("Arial", self.font_size.value()))
+    
+    def on_font_size_changed(self):
+        """Atualiza o preview quando o tamanho da fonte muda"""
+        current_font = self.font_combo.currentText()
+        if current_font:
+            self.update_font_preview(current_font)
     
     def create_progress_section(self):
         group = QGroupBox("Progresso da Análise")
@@ -230,9 +369,7 @@ class MainWindow(QMainWindow):
         group = QGroupBox("Log de Atividades")
         layout = QVBoxLayout(group)
         
-        self.log_text = QTextEdit()
-        self.log_text.setReadOnly(True)
-        self.log_text.setMaximumHeight(200)
+        # self.log_text já foi criado no __init__, apenas adicionar ao layout
         layout.addWidget(self.log_text)
         
         return group
@@ -307,6 +444,24 @@ class MainWindow(QMainWindow):
         color = QColorDialog.getColor()
         if color.isValid():
             self.color_btn.setStyleSheet(f"background-color: {color.name()}; border: 1px solid #ccc;")
+            # Atualizar também o preview da fonte com a nova cor
+            self.update_font_preview_color(color.name())
+    
+    def update_font_preview_color(self, color):
+        """Atualiza a cor do texto no preview da fonte"""
+        current_style = self.font_preview_label.styleSheet()
+        # Manter o estilo existente, mas atualizar a cor
+        new_style = f"""
+            QLabel {{
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                padding: 8px;
+                border-radius: 4px;
+                min-width: 200px;
+                color: {color};
+            }}
+        """
+        self.font_preview_label.setStyleSheet(new_style)
     
     def start_sync(self):
         if not self.current_directory:
@@ -373,6 +528,10 @@ class MainWindow(QMainWindow):
         self.font_combo.setCurrentText(font_family)
         self.font_size.setValue(font_size)
         self.color_btn.setStyleSheet(f"background-color: {font_color}; border: 1px solid #ccc;")
+        
+        # Atualizar preview com as configurações carregadas
+        self.update_font_preview(font_family)
+        self.update_font_preview_color(font_color)
     
     def apply_styles(self):
         self.style_manager.apply_style(self, 'main')
