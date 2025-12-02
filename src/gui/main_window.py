@@ -205,6 +205,42 @@ class MainWindow(QMainWindow):
         self.font_size.setValue(16)
         font_layout.addWidget(self.font_size)
         
+        # Botão para Negrito - "N" em negrito (toggle button)
+        self.bold_button = QPushButton("N")
+        self.bold_button.setCheckable(True)  # Torna o botão um toggle button
+        self.bold_button.setFixedSize(40, 30)
+        
+        # Usar a mesma fonte global do aplicativo (já configurada como size 11)
+        app_font = self.font()
+        bold_font = QFont(app_font)
+        bold_font.setBold(True)
+        self.bold_button.setFont(bold_font)
+        
+        # Estilo para o botão de negrito
+        self.bold_button.setStyleSheet("""
+            QPushButton {
+                background-color: #f0f0f0;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #e0e0e0;
+            }
+            QPushButton:checked {
+                background-color: #0078d4;
+                color: white;
+                border: 1px solid #005a9e;
+            }
+            QPushButton:checked:hover {
+                background-color: #106ebe;
+            }
+        """)
+        
+        # Tooltip para explicar que é negrito - com fonte maior
+        self.bold_button.setToolTip("<span style='font-size: 11pt; font-weight: bold;'>Negrito</span>")
+        font_layout.addWidget(self.bold_button)
+        
         font_layout.addWidget(QLabel("Cor:"))
         self.color_btn = QPushButton()
         self.color_btn.setFixedSize(30, 30)
@@ -231,9 +267,10 @@ class MainWindow(QMainWindow):
         preview_layout.addStretch()
         layout.addLayout(preview_layout)
         
-        # Conectar a mudança de fonte para atualizar o preview
+        # Conectar sinais para atualizar o preview
         self.font_combo.currentTextChanged.connect(self.update_font_preview)
         self.font_size.valueChanged.connect(self.on_font_size_changed)
+        self.bold_button.toggled.connect(self.on_bold_toggled)
         
         # Informações sobre formatação
         format_info = QLabel(
@@ -317,11 +354,21 @@ class MainWindow(QMainWindow):
             index = self.font_combo.count() - 1
             self.font_combo.setItemData(index, QFont(font, 10), Qt.ItemDataRole.FontRole)
     
-    def update_font_preview(self, font_family):
+    def update_font_preview(self, font_family=None):
         """Atualiza o preview da fonte selecionada"""
         try:
+            if font_family is None:
+                font_family = self.font_combo.currentText()
+            
             font_size = self.font_size.value()
             preview_font = QFont(font_family, font_size)
+            
+            # Aplicar negrito se o botão estiver pressionado
+            if self.bold_button.isChecked():
+                preview_font.setBold(True)
+            else:
+                preview_font.setBold(False)
+            
             self.font_preview_label.setFont(preview_font)
             
             # Atualizar também a cor se estiver definida
@@ -344,13 +391,18 @@ class MainWindow(QMainWindow):
                 
         except Exception as e:
             # Em caso de erro, usar fonte padrão
-            self.font_preview_label.setFont(QFont("Arial", self.font_size.value()))
+            default_font = QFont("Arial", self.font_size.value())
+            if self.bold_button.isChecked():
+                default_font.setBold(True)
+            self.font_preview_label.setFont(default_font)
     
     def on_font_size_changed(self):
         """Atualiza o preview quando o tamanho da fonte muda"""
-        current_font = self.font_combo.currentText()
-        if current_font:
-            self.update_font_preview(current_font)
+        self.update_font_preview()
+    
+    def on_bold_toggled(self):
+        """Atualiza o preview quando o negrito é alterado"""
+        self.update_font_preview()
     
     def create_progress_section(self):
         group = QGroupBox("Progresso da Análise")
@@ -476,12 +528,14 @@ class MainWindow(QMainWindow):
         subtitle_settings = {
             'font_family': self.font_combo.currentText(),
             'font_size': self.font_size.value(),
+            'bold': self.bold_button.isChecked(),
             'font_color': self.color_btn.styleSheet().split('background-color: ')[1].split(';')[0]
         }
         
         # Salvar configurações
         self.config.set_setting('font_family', subtitle_settings['font_family'])
         self.config.set_setting('font_size', subtitle_settings['font_size'])
+        self.config.set_setting('font_bold', subtitle_settings['bold'])
         self.config.set_setting('font_color', subtitle_settings['font_color'])
         
         # Iniciar thread de sincronização
@@ -523,10 +577,12 @@ class MainWindow(QMainWindow):
     def load_settings(self):
         font_family = self.config.get_setting('font_family', 'Arial')
         font_size = self.config.get_setting('font_size', 16)
+        font_bold = self.config.get_setting('font_bold', False)
         font_color = self.config.get_setting('font_color', '#FFFFFF')
         
         self.font_combo.setCurrentText(font_family)
         self.font_size.setValue(font_size)
+        self.bold_button.setChecked(font_bold)
         self.color_btn.setStyleSheet(f"background-color: {font_color}; border: 1px solid #ccc;")
         
         # Atualizar preview com as configurações carregadas
