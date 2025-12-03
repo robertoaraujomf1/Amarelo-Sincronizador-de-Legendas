@@ -168,14 +168,50 @@ class MainWindow(QMainWindow):
         
         layout.addLayout(folder_layout)
         
-        # Informação sobre bloqueio de arquivos
-        info_label = QLabel(
+        # Informação sobre bloqueio de arquivos (OCULTÁVEL)
+        self.file_lock_frame = QFrame()
+        self.file_lock_frame.setStyleSheet("""
+            QFrame {
+                background-color: #FFF3E0;
+                border-radius: 5px;
+                border: 1px solid #FFE0B2;
+            }
+        """)
+        file_lock_layout = QVBoxLayout(self.file_lock_frame)
+        file_lock_layout.setContentsMargins(10, 5, 10, 5)
+        
+        file_lock_header = QHBoxLayout()
+        
+        self.file_lock_label = QLabel(
             "⚠️ Durante a análise, os arquivos serão bloqueados para evitar modificações. "
             "Não mova, renomeie ou exclua arquivos até que a análise seja concluída."
         )
-        info_label.setWordWrap(True)
-        info_label.setStyleSheet("color: #FF6B35; background-color: #FFF3E0; padding: 10px; border-radius: 5px; font-size: 12px;")
-        layout.addWidget(info_label)
+        self.file_lock_label.setWordWrap(True)
+        self.file_lock_label.setStyleSheet("color: #FF6B35; font-size: 12px;")
+        file_lock_header.addWidget(self.file_lock_label)
+        
+        # Botão para ocultar/mostrar o aviso
+        self.hide_lock_btn = QPushButton("✕")
+        self.hide_lock_btn.setFixedSize(24, 24)
+        self.hide_lock_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: 1px solid #FF6B35;
+                color: #FF6B35;
+                border-radius: 3px;
+                font-size: 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #FF6B35;
+                color: white;
+            }
+        """)
+        self.hide_lock_btn.clicked.connect(self.toggle_file_lock_warning)
+        file_lock_header.addWidget(self.hide_lock_btn)
+        
+        file_lock_layout.addLayout(file_lock_header)
+        layout.addWidget(self.file_lock_frame)
         
         return group
     
@@ -272,17 +308,82 @@ class MainWindow(QMainWindow):
         self.font_size.valueChanged.connect(self.on_font_size_changed)
         self.bold_button.toggled.connect(self.on_bold_toggled)
         
-        # Informações sobre formatação
-        format_info = QLabel(
+        # Informações sobre formatação (OCULTÁVEL)
+        self.format_info_frame = QFrame()
+        self.format_info_frame.setStyleSheet("""
+            QFrame {
+                background-color: #f8f9fa;
+                border-radius: 5px;
+                border: 1px solid #dee2e6;
+            }
+        """)
+        format_info_layout = QVBoxLayout(self.format_info_frame)
+        format_info_layout.setContentsMargins(10, 5, 10, 5)
+        
+        format_info_header = QHBoxLayout()
+        
+        self.format_info_label = QLabel(
             "📝 As legendas serão centralizadas na parte inferior. "
             "Cada bloco terá no máximo 2 linhas e respeitará as margens da tela."
         )
-        format_info.setWordWrap(True)
-        format_info.setStyleSheet("color: #666; font-size: 12px; padding: 5px;")
-        format_info.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        layout.addWidget(format_info)
+        self.format_info_label.setWordWrap(True)
+        self.format_info_label.setStyleSheet("color: #666; font-size: 12px;")
+        format_info_header.addWidget(self.format_info_label)
+        
+        # Botão para ocultar/mostrar o aviso
+        self.hide_format_btn = QPushButton("✕")
+        self.hide_format_btn.setFixedSize(24, 24)
+        self.hide_format_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: 1px solid #666;
+                color: #666;
+                border-radius: 3px;
+                font-size: 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #666;
+                color: white;
+            }
+        """)
+        self.hide_format_btn.clicked.connect(self.toggle_format_info)
+        format_info_header.addWidget(self.hide_format_btn)
+        
+        format_info_layout.addLayout(format_info_header)
+        layout.addWidget(self.format_info_frame)
         
         return group
+    
+    def toggle_file_lock_warning(self):
+        """Alterna a visibilidade do aviso sobre bloqueio de arquivos"""
+        is_visible = self.file_lock_frame.isVisible()
+        self.file_lock_frame.setVisible(not is_visible)
+        
+        # Salvar preferência
+        self.config.set_setting('show_file_lock_warning', not is_visible)
+        
+        # Atualizar texto do botão
+        self.hide_lock_btn.setText("✕" if not is_visible else "↻")
+        if not is_visible:
+            self.hide_lock_btn.setToolTip("Ocultar aviso")
+        else:
+            self.hide_lock_btn.setToolTip("Mostrar aviso")
+    
+    def toggle_format_info(self):
+        """Alterna a visibilidade da informação sobre formatação"""
+        is_visible = self.format_info_frame.isVisible()
+        self.format_info_frame.setVisible(not is_visible)
+        
+        # Salvar preferência
+        self.config.set_setting('show_format_info', not is_visible)
+        
+        # Atualizar texto do botão
+        self.hide_format_btn.setText("✕" if not is_visible else "↻")
+        if not is_visible:
+            self.hide_format_btn.setToolTip("Ocultar informação")
+        else:
+            self.hide_format_btn.setToolTip("Mostrar informação")
     
     def load_system_fonts(self):
         """Carrega TODAS as fontes do sistema e as exibe com sua aparência real"""
@@ -584,6 +685,20 @@ class MainWindow(QMainWindow):
         self.font_size.setValue(font_size)
         self.bold_button.setChecked(font_bold)
         self.color_btn.setStyleSheet(f"background-color: {font_color}; border: 1px solid #ccc;")
+        
+        # Carregar preferências de visibilidade dos avisos
+        show_file_lock_warning = self.config.get_setting('show_file_lock_warning', True)
+        show_format_info = self.config.get_setting('show_format_info', True)
+        
+        self.file_lock_frame.setVisible(show_file_lock_warning)
+        self.format_info_frame.setVisible(show_format_info)
+        
+        # Atualizar textos dos botões
+        self.hide_lock_btn.setText("✕" if show_file_lock_warning else "↻")
+        self.hide_lock_btn.setToolTip("Ocultar aviso" if show_file_lock_warning else "Mostrar aviso")
+        
+        self.hide_format_btn.setText("✕" if show_format_info else "↻")
+        self.hide_format_btn.setToolTip("Ocultar informação" if show_format_info else "Mostrar informação")
         
         # Atualizar preview com as configurações carregadas
         self.update_font_preview(font_family)

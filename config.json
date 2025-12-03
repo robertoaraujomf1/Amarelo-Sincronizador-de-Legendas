@@ -6,5 +6,7 @@
     "font_color": "#aa00ff",
     "recent_folders": [
         "C:/Users/robertoaraujomf/Downloads/Telegram Desktop"
-    ]
+    ],
+    "show_file_lock_warning": false,
+    "show_format_info": false
 }
