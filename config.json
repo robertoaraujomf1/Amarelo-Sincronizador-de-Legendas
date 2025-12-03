@@ -1,12 +1,10 @@
 {
     "language": "system",
-    "theme": "light",
+    "theme": "dark",
     "font_family": "Segoe UI",
     "font_size": 20,
     "font_color": "#aa00ff",
-    "recent_folders": [
-        "C:/Users/robertoaraujomf/Downloads/Telegram Desktop"
-    ],
+    "recent_folders": [],
     "show_file_lock_warning": false,
     "show_format_info": false
 }

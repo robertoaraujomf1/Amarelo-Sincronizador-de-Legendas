@@ -159,8 +159,10 @@ class MainWindow(QMainWindow):
                 background-color: transparent;
             }
             QPushButton:hover {
-                background-color: #e0e0e0;
-                border-radius: 10px;
+                background-color: transparent;
+            }
+            QPushButton:pressed {
+                background-color: transparent;
             }
         """)
         browse_btn.clicked.connect(self.browse_folder)
@@ -544,11 +546,14 @@ class MainWindow(QMainWindow):
                 background-color: transparent;
             }
             QPushButton:hover {
-                background-color: #e0e0e0;
-                border-radius: 15px;
+                background-color: transparent;
+            }
+            QPushButton:pressed {
+                background-color: transparent;
             }
             QPushButton:disabled {
-                background-color: #f0f0f0;
+                background-color: transparent;
+                opacity: 0.5;
             }
         """)
         self.sync_btn.clicked.connect(self.start_sync)
@@ -567,8 +572,10 @@ class MainWindow(QMainWindow):
                 background-color: transparent;
             }
             QPushButton:hover {
-                background-color: #e0e0e0;
-                border-radius: 10px;
+                background-color: transparent;
+            }
+            QPushButton:pressed {
+                background-color: transparent;
             }
         """)
         settings_btn.clicked.connect(self.open_settings)
