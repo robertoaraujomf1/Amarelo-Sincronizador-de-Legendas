@@ -10,6 +10,7 @@ import json
 from src.core.subtitle_sync import SubtitleSyncEngine
 from src.gui.settings_dialog import SettingsDialog
 from src.gui.style_manager import StyleManager
+from src.gui.theme_manager import apply_dark_theme
 
 class SyncThread(QThread):
     progress_updated = Signal(int, str)
@@ -94,7 +95,6 @@ class MainWindow(QMainWindow):
         
         # Aplicar estilo
         self.style_manager = StyleManager()
-        self.apply_styles()
         
         # Inicializar log_text antes de setup_ui
         self.log_text = QTextEdit()
@@ -103,6 +103,7 @@ class MainWindow(QMainWindow):
         
         self.setup_ui()
         self.load_settings()
+        self.apply_current_theme()
         
     def setup_ui(self):
         # Widget central
@@ -254,7 +255,7 @@ class MainWindow(QMainWindow):
         bold_font.setBold(True)
         self.bold_button.setFont(bold_font)
         
-        # Estilo para o botão de negrito
+        # Estilo para o botão de negrito - será ajustado pelo tema
         self.bold_button.setStyleSheet("""
             QPushButton {
                 background-color: #f0f0f0;
@@ -681,6 +682,8 @@ class MainWindow(QMainWindow):
         dialog = SettingsDialog(self.config, self.language_manager, self)
         if dialog.exec():
             self.load_settings()
+            # Aplicar tema imediatamente após salvar configurações
+            self.apply_current_theme()
     
     def load_settings(self):
         font_family = self.config.get_setting('font_family', 'Arial')
@@ -711,8 +714,215 @@ class MainWindow(QMainWindow):
         self.update_font_preview(font_family)
         self.update_font_preview_color(font_color)
     
-    def apply_styles(self):
+    def apply_current_theme(self):
+        """Aplica o tema atual baseado nas configurações salvas"""
+        theme = self.config.get_setting('theme', 'light')
+        
+        if theme == 'dark':
+            # Aplicar tema escuro
+            apply_dark_theme(QApplication.instance())
+            # Aplicar estilos específicos para tema escuro
+            self.apply_dark_theme_styles()
+        else:
+            # Aplicar tema claro (reset para padrão)
+            QApplication.instance().setStyle("Fusion")
+            QApplication.instance().setPalette(QApplication.instance().style().standardPalette())
+            # Aplicar estilos específicos para tema claro
+            self.apply_light_theme_styles()
+        
+        # Reaplicar o estilo principal
         self.style_manager.apply_style(self, 'main')
+    
+    def apply_dark_theme_styles(self):
+        """Aplica estilos específicos para o tema escuro"""
+        # Ajustar cores dos botões de ocultar/mostrar
+        self.hide_lock_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: 1px solid #FF8C42;
+                color: #FF8C42;
+                border-radius: 3px;
+                font-size: 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #FF8C42;
+                color: white;
+            }
+        """)
+        
+        self.hide_format_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: 1px solid #AAAAAA;
+                color: #AAAAAA;
+                border-radius: 3px;
+                font-size: 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #AAAAAA;
+                color: white;
+            }
+        """)
+        
+        # Ajustar botão de negrito para tema escuro
+        self.bold_button.setStyleSheet("""
+            QPushButton {
+                background-color: #404040;
+                border: 1px solid #606060;
+                border-radius: 4px;
+                font-weight: bold;
+                color: white;
+            }
+            QPushButton:hover {
+                background-color: #505050;
+            }
+            QPushButton:checked {
+                background-color: #0078d4;
+                color: white;
+                border: 1px solid #005a9e;
+            }
+            QPushButton:checked:hover {
+                background-color: #106ebe;
+            }
+        """)
+        
+        # Ajustar botão de cor para tema escuro
+        current_color_style = self.color_btn.styleSheet()
+        if "background-color: #FFFFFF" in current_color_style:
+            # Se for branco, manter, senão usar a cor atual
+            self.color_btn.setStyleSheet("background-color: #FFFFFF; border: 1px solid #606060;")
+        
+        # Ajustar preview da fonte para tema escuro
+        current_preview_style = self.font_preview_label.styleSheet()
+        if "background-color: #f8f9fa" in current_preview_style:
+            self.font_preview_label.setStyleSheet("""
+                QLabel {
+                    background-color: #2d2d2d;
+                    border: 1px solid #404040;
+                    padding: 8px;
+                    border-radius: 4px;
+                    min-width: 200px;
+                }
+            """)
+        
+        # Ajustar frames informativos para tema escuro
+        self.file_lock_frame.setStyleSheet("""
+            QFrame {
+                background-color: #3A2C1C;
+                border-radius: 5px;
+                border: 1px solid #5A3C1C;
+            }
+        """)
+        
+        self.format_info_frame.setStyleSheet("""
+            QFrame {
+                background-color: #2d2d2d;
+                border-radius: 5px;
+                border: 1px solid #404040;
+            }
+        """)
+        
+        # Ajustar labels informativas
+        self.file_lock_label.setStyleSheet("color: #FFA726; font-size: 12px;")
+        self.format_info_label.setStyleSheet("color: #AAAAAA; font-size: 12px;")
+    
+    def apply_light_theme_styles(self):
+        """Aplica estilos específicos para o tema claro"""
+        # Restaurar cores dos botões de ocultar/mostrar
+        self.hide_lock_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: 1px solid #FF6B35;
+                color: #FF6B35;
+                border-radius: 3px;
+                font-size: 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #FF6B35;
+                color: white;
+            }
+        """)
+        
+        self.hide_format_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: 1px solid #666;
+                color: #666;
+                border-radius: 3px;
+                font-size: 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #666;
+                color: white;
+            }
+        """)
+        
+        # Restaurar botão de negrito para tema claro
+        self.bold_button.setStyleSheet("""
+            QPushButton {
+                background-color: #f0f0f0;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #e0e0e0;
+            }
+            QPushButton:checked {
+                background-color: #0078d4;
+                color: white;
+                border: 1px solid #005a9e;
+            }
+            QPushButton:checked:hover {
+                background-color: #106ebe;
+            }
+        """)
+        
+        # Restaurar botão de cor
+        current_color = self.color_btn.styleSheet().split('background-color: ')[1].split(';')[0]
+        self.color_btn.setStyleSheet(f"background-color: {current_color}; border: 1px solid #ccc;")
+        
+        # Restaurar preview da fonte
+        current_preview_style = self.font_preview_label.styleSheet()
+        if "background-color: #2d2d2d" in current_preview_style:
+            self.font_preview_label.setStyleSheet("""
+                QLabel {
+                    background-color: #f8f9fa;
+                    border: 1px solid #dee2e6;
+                    padding: 8px;
+                    border-radius: 4px;
+                    min-width: 200px;
+                }
+            """)
+        
+        # Restaurar frames informativos
+        self.file_lock_frame.setStyleSheet("""
+            QFrame {
+                background-color: #FFF3E0;
+                border-radius: 5px;
+                border: 1px solid #FFE0B2;
+            }
+        """)
+        
+        self.format_info_frame.setStyleSheet("""
+            QFrame {
+                background-color: #f8f9fa;
+                border-radius: 5px;
+                border: 1px solid #dee2e6;
+            }
+        """)
+        
+        # Restaurar labels informativas
+        self.file_lock_label.setStyleSheet("color: #FF6B35; font-size: 12px;")
+        self.format_info_label.setStyleSheet("color: #666; font-size: 12px;")
+    
+    def apply_styles(self):
+        """Método mantido para compatibilidade"""
+        self.apply_current_theme()
     
     def closeEvent(self, event):
         if self.sync_thread and self.sync_thread.isRunning():

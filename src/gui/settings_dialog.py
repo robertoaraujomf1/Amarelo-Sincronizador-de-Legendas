@@ -22,6 +22,9 @@ class SettingsDialog(QDialog):
         self.setup_ui()
         self.load_settings()
         
+        # Aplicar tema atual ao diálogo
+        self.apply_current_theme()
+        
     def setup_ui(self):
         layout = QVBoxLayout(self)
         
@@ -114,15 +117,25 @@ class SettingsDialog(QDialog):
     def save_settings(self):
         # Salvar idioma
         language = self.language_combo.currentData()
-        self.config.set_setting('language', language)
         
         # Salvar tema
         theme = self.theme_combo.currentData()
+        old_theme = self.config.get_setting('theme', 'light')
         self.config.set_setting('theme', theme)
         
         # Aplicar mudanças
         if self.parent:
-            self.parent.language_manager.load_language(language)
+            # Usar o novo método set_language do LanguageManager
+            if hasattr(self.parent.language_manager, 'set_language'):
+                success = self.parent.language_manager.set_language(language)
+            else:
+                # Fallback para método antigo
+                self.parent.language_manager.load_language(language)
+                self.config.set_setting('language', language)
+            
+            # Se o tema mudou, aplicar imediatamente
+            if theme != old_theme and hasattr(self.parent, 'apply_current_theme'):
+                self.parent.apply_current_theme()
         
         QMessageBox.information(self, "Sucesso", "Configurações salvas com sucesso!")
         self.accept()
@@ -131,3 +144,110 @@ class SettingsDialog(QDialog):
         self.config.set_setting('recent_folders', [])
         self.recent_list.clear()
         QMessageBox.information(self, "Sucesso", "Lista de pastas recentes limpa!")
+    
+    def apply_current_theme(self):
+        """Aplica o tema atual ao diálogo de configurações"""
+        theme = self.config.get_setting('theme', 'light')
+        
+        if theme == 'dark':
+            # Estilos para tema escuro no diálogo
+            self.setStyleSheet("""
+                QDialog {
+                    background-color: #2d2d2d;
+                }
+                QGroupBox {
+                    color: white;
+                    border: 1px solid #555;
+                    border-radius: 5px;
+                    margin-top: 10px;
+                    padding-top: 10px;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    left: 10px;
+                    padding: 0 5px 0 5px;
+                }
+                QLabel {
+                    color: white;
+                }
+                QComboBox {
+                    background-color: #404040;
+                    color: white;
+                    border: 1px solid #555;
+                    border-radius: 3px;
+                    padding: 5px;
+                }
+                QComboBox:hover {
+                    border: 1px solid #777;
+                }
+                QListWidget {
+                    background-color: #404040;
+                    color: white;
+                    border: 1px solid #555;
+                    border-radius: 3px;
+                }
+                QPushButton {
+                    background-color: #505050;
+                    color: white;
+                    border: 1px solid #555;
+                    border-radius: 3px;
+                    padding: 5px 15px;
+                }
+                QPushButton:hover {
+                    background-color: #606060;
+                }
+                QPushButton:pressed {
+                    background-color: #404040;
+                }
+            """)
+        else:
+            # Estilos para tema claro (reset para padrão)
+            self.setStyleSheet("""
+                QDialog {
+                    background-color: white;
+                }
+                QGroupBox {
+                    color: #333;
+                    border: 1px solid #ccc;
+                    border-radius: 5px;
+                    margin-top: 10px;
+                    padding-top: 10px;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    left: 10px;
+                    padding: 0 5px 0 5px;
+                }
+                QLabel {
+                    color: #333;
+                }
+                QComboBox {
+                    background-color: white;
+                    color: #333;
+                    border: 1px solid #ccc;
+                    border-radius: 3px;
+                    padding: 5px;
+                }
+                QComboBox:hover {
+                    border: 1px solid #999;
+                }
+                QListWidget {
+                    background-color: white;
+                    color: #333;
+                    border: 1px solid #ccc;
+                    border-radius: 3px;
+                }
+                QPushButton {
+                    background-color: #f0f0f0;
+                    color: #333;
+                    border: 1px solid #ccc;
+                    border-radius: 3px;
+                    padding: 5px 15px;
+                }
+                QPushButton:hover {
+                    background-color: #e0e0e0;
+                }
+                QPushButton:pressed {
+                    background-color: #d0d0d0;
+                }
+            """)

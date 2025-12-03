@@ -1,9 +1,10 @@
 import json
 import os
-from PyQt6.QtCore import QTranslator, QLibraryInfo
+import locale
 
 class LanguageManager:
-    def __init__(self):
+    def __init__(self, config):
+        self.config = config
         self.locales_dir = "src/locales"
         self.current_language = "system"
         self.current_translation = None
@@ -19,13 +20,51 @@ class LanguageManager:
             'es_ES': 'Español',
             'ja_JP': '日本語'
         }
+        
+        # Carregar idioma salvo ou detectar do sistema
+        saved_language = config.get_setting('language', 'system')
+        if saved_language == 'system':
+            system_lang = self.detect_system_language()
+            self.load_language(system_lang)
+        else:
+            self.load_language(saved_language)
+    
+    def detect_system_language(self):
+        """Detecta o idioma do sistema operacional"""
+        try:
+            # Primeiro tenta locale do sistema
+            system_locale = locale.getdefaultlocale()[0]
+            if system_locale:
+                # Converte para formato do nosso sistema
+                if system_locale.startswith('pt_BR'):
+                    return 'pt_BR'
+                elif system_locale.startswith('pt'):
+                    return 'pt_PT'
+                elif system_locale.startswith('en_GB'):
+                    return 'en_GB'
+                elif system_locale.startswith('en'):
+                    return 'en_US'
+                elif system_locale.startswith('fr'):
+                    return 'fr_FR'
+                elif system_locale.startswith('de'):
+                    return 'de_DE'
+                elif system_locale.startswith('es'):
+                    return 'es_ES'
+                elif system_locale.startswith('ja'):
+                    return 'ja_JP'
+        except:
+            pass
+        
+        # Fallback para inglês US
+        return 'en_US'
     
     def load_language(self, language_code):
         """Carrega o idioma especificado"""
         self.current_language = language_code
         
         if language_code == 'system':
-            return True
+            # Usar detecção automática
+            language_code = self.detect_system_language()
         
         try:
             translation_file = os.path.join(self.locales_dir, f"{language_code}.json")
@@ -46,28 +85,13 @@ class LanguageManager:
             return self.translations[self.current_language][key]
         return default if default is not None else key
     
-    def get_supported_language(self, system_language):
-        """Obtém o idioma suportado mais próximo do idioma do sistema"""
-        # Mapear idiomas do sistema para os suportados
-        language_mapping = {
-            'pt_BR': 'pt_BR',
-            'pt_PT': 'pt_PT',
-            'pt': 'pt_BR',
-            'en_US': 'en_US',
-            'en_GB': 'en_GB',
-            'en': 'en_US',
-            'fr_FR': 'fr_FR',
-            'fr': 'fr_FR',
-            'de_DE': 'de_DE',
-            'de': 'de_DE',
-            'es_ES': 'es_ES',
-            'es': 'es_ES',
-            'ja_JP': 'ja_JP',
-            'ja': 'ja_JP'
-        }
-        
-        return language_mapping.get(system_language, 'en_US')
-    
     def get_available_languages(self):
         """Retorna a lista de idiomas disponíveis"""
         return self.supported_languages
+    
+    def set_language(self, language_code):
+        """Define um novo idioma e salva nas configurações"""
+        success = self.load_language(language_code)
+        if success:
+            self.config.set_setting('language', language_code)
+        return success
