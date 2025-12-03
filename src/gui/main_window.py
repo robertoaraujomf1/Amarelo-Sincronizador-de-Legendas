@@ -63,17 +63,113 @@ class SyncThread(QThread):
 class FontComboBox(QComboBox):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setStyleSheet("""
-            QComboBox {
-                combobox-popup: 0;
-                max-height: 200px;
-            }
-            QComboBox QAbstractItemView {
-                border: 1px solid #ccc;
-                background-color: white;
-                selection-background-color: #e6f3ff;
-            }
-        """)
+        # Estilo será aplicado dinamicamente pelo tema
+        self.is_dark_theme = False
+        
+    def apply_theme(self, is_dark):
+        """Aplica estilos baseados no tema"""
+        self.is_dark_theme = is_dark
+        
+        if is_dark:
+            self.setStyleSheet("""
+                FontComboBox {
+                    background-color: #404040;
+                    color: white;
+                    border: 1px solid #555;
+                    border-radius: 3px;
+                    padding: 5px;
+                    padding-right: 20px;
+                    min-height: 30px;
+                }
+                FontComboBox:hover {
+                    border: 1px solid #777;
+                    background-color: #505050;
+                }
+                FontComboBox:focus {
+                    border: 1px solid #0078d4;
+                }
+                FontComboBox::drop-down {
+                    border: none;
+                    width: 25px;
+                }
+                FontComboBox::down-arrow {
+                    width: 12px;
+                    height: 12px;
+                    border-left: 4px solid transparent;
+                    border-right: 4px solid transparent;
+                    border-top: 6px solid white;
+                }
+                FontComboBox QAbstractItemView {
+                    background-color: #404040;
+                    color: white;
+                    border: 1px solid #555;
+                    selection-background-color: #0078d4;
+                    selection-color: white;
+                    outline: none;
+                    min-width: 200px;
+                }
+                FontComboBox QAbstractItemView::item {
+                    padding: 5px 10px;
+                    font-size: 11px;
+                }
+                FontComboBox QAbstractItemView::item:hover {
+                    background-color: #505050;
+                }
+                FontComboBox QAbstractItemView::item:selected {
+                    background-color: #0078d4;
+                    color: white;
+                }
+            """)
+        else:
+            self.setStyleSheet("""
+                FontComboBox {
+                    background-color: white;
+                    color: #333;
+                    border: 1px solid #ccc;
+                    border-radius: 3px;
+                    padding: 5px;
+                    padding-right: 20px;
+                    min-height: 30px;
+                }
+                FontComboBox:hover {
+                    border: 1px solid #999;
+                    background-color: #f8f9fa;
+                }
+                FontComboBox:focus {
+                    border: 1px solid #0078d4;
+                }
+                FontComboBox::drop-down {
+                    border: none;
+                    width: 25px;
+                }
+                FontComboBox::down-arrow {
+                    width: 12px;
+                    height: 12px;
+                    border-left: 4px solid transparent;
+                    border-right: 4px solid transparent;
+                    border-top: 6px solid #333;
+                }
+                FontComboBox QAbstractItemView {
+                    background-color: white;
+                    color: #333;
+                    border: 1px solid #ccc;
+                    selection-background-color: #e6f3ff;
+                    selection-color: #333;
+                    outline: none;
+                    min-width: 200px;
+                }
+                FontComboBox QAbstractItemView::item {
+                    padding: 5px 10px;
+                    font-size: 11px;
+                }
+                FontComboBox QAbstractItemView::item:hover {
+                    background-color: #f0f0f0;
+                }
+                FontComboBox QAbstractItemView::item:selected {
+                    background-color: #e6f3ff;
+                    color: #333;
+                }
+            """)
 
 class MainWindow(QMainWindow):
     def __init__(self, config, language_manager, app_icon):
@@ -717,8 +813,9 @@ class MainWindow(QMainWindow):
     def apply_current_theme(self):
         """Aplica o tema atual baseado nas configurações salvas"""
         theme = self.config.get_setting('theme', 'light')
+        is_dark = (theme == 'dark')
         
-        if theme == 'dark':
+        if is_dark:
             # Aplicar tema escuro
             apply_dark_theme(QApplication.instance())
             # Aplicar estilos específicos para tema escuro
@@ -729,6 +826,10 @@ class MainWindow(QMainWindow):
             QApplication.instance().setPalette(QApplication.instance().style().standardPalette())
             # Aplicar estilos específicos para tema claro
             self.apply_light_theme_styles()
+        
+        # Aplicar tema à combobox de fontes
+        if hasattr(self, 'font_combo') and isinstance(self.font_combo, FontComboBox):
+            self.font_combo.apply_theme(is_dark)
         
         # Reaplicar o estilo principal
         self.style_manager.apply_style(self, 'main')
@@ -804,6 +905,7 @@ class MainWindow(QMainWindow):
                     padding: 8px;
                     border-radius: 4px;
                     min-width: 200px;
+                    color: white;
                 }
             """)
         
@@ -827,6 +929,43 @@ class MainWindow(QMainWindow):
         # Ajustar labels informativas
         self.file_lock_label.setStyleSheet("color: #FFA726; font-size: 12px;")
         self.format_info_label.setStyleSheet("color: #AAAAAA; font-size: 12px;")
+        
+        # Ajustar QSpinBox para tema escuro
+        self.font_size.setStyleSheet("""
+            QSpinBox {
+                background-color: #404040;
+                color: white;
+                border: 1px solid #555;
+                border-radius: 3px;
+                padding: 5px;
+            }
+            QSpinBox:hover {
+                border: 1px solid #777;
+            }
+            QSpinBox::up-button, QSpinBox::down-button {
+                background-color: #505050;
+                border: 1px solid #555;
+                width: 20px;
+            }
+            QSpinBox::up-button:hover, QSpinBox::down-button:hover {
+                background-color: #606060;
+            }
+            QSpinBox::up-arrow, QSpinBox::down-arrow {
+                width: 8px;
+                height: 8px;
+                border: 2px solid white;
+            }
+            QSpinBox::up-arrow {
+                border-bottom: none;
+                border-left-color: transparent;
+                border-right-color: transparent;
+            }
+            QSpinBox::down-arrow {
+                border-top: none;
+                border-left-color: transparent;
+                border-right-color: transparent;
+            }
+        """)
     
     def apply_light_theme_styles(self):
         """Aplica estilos específicos para o tema claro"""
@@ -896,6 +1035,7 @@ class MainWindow(QMainWindow):
                     padding: 8px;
                     border-radius: 4px;
                     min-width: 200px;
+                    color: #000000;
                 }
             """)
         
@@ -919,6 +1059,43 @@ class MainWindow(QMainWindow):
         # Restaurar labels informativas
         self.file_lock_label.setStyleSheet("color: #FF6B35; font-size: 12px;")
         self.format_info_label.setStyleSheet("color: #666; font-size: 12px;")
+        
+        # Restaurar QSpinBox para tema claro
+        self.font_size.setStyleSheet("""
+            QSpinBox {
+                background-color: white;
+                color: #333;
+                border: 1px solid #ccc;
+                border-radius: 3px;
+                padding: 5px;
+            }
+            QSpinBox:hover {
+                border: 1px solid #999;
+            }
+            QSpinBox::up-button, QSpinBox::down-button {
+                background-color: #f0f0f0;
+                border: 1px solid #ccc;
+                width: 20px;
+            }
+            QSpinBox::up-button:hover, QSpinBox::down-button:hover {
+                background-color: #e0e0e0;
+            }
+            QSpinBox::up-arrow, QSpinBox::down-arrow {
+                width: 8px;
+                height: 8px;
+                border: 2px solid #333;
+            }
+            QSpinBox::up-arrow {
+                border-bottom: none;
+                border-left-color: transparent;
+                border-right-color: transparent;
+            }
+            QSpinBox::down-arrow {
+                border-top: none;
+                border-left-color: transparent;
+                border-right-color: transparent;
+            }
+        """)
     
     def apply_styles(self):
         """Método mantido para compatibilidade"""
