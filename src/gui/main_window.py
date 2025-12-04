@@ -63,16 +63,16 @@ class SyncThread(QThread):
 class FontComboBox(QComboBox):
     def __init__(self, parent=None):
         super().__init__(parent)
-        # Estilo será aplicado dinamicamente pelo tema
         self.is_dark_theme = False
         
     def apply_theme(self, is_dark):
-        """Aplica estilos baseados no tema"""
+        """Aplica apenas cores básicas"""
         self.is_dark_theme = is_dark
         
         if is_dark:
-            self.setStyleSheet("""
-                FontComboBox {
+            # Estilo MÍNIMO para tema escuro
+            style = """
+                QComboBox {
                     background-color: #404040;
                     color: white;
                     border: 1px solid #555;
@@ -81,48 +81,27 @@ class FontComboBox(QComboBox):
                     padding-right: 20px;
                     min-height: 30px;
                 }
-                FontComboBox:hover {
+                QComboBox:hover {
                     border: 1px solid #777;
-                    background-color: #505050;
                 }
-                FontComboBox:focus {
-                    border: 1px solid #0078d4;
-                }
-                FontComboBox::drop-down {
+                QComboBox::drop-down {
                     border: none;
                     width: 25px;
                 }
-                FontComboBox::down-arrow {
-                    width: 12px;
-                    height: 12px;
+                QComboBox::down-arrow {
+                    image: none;
                     border-left: 4px solid transparent;
                     border-right: 4px solid transparent;
                     border-top: 6px solid white;
+                    width: 0;
+                    height: 0;
                 }
-                FontComboBox QAbstractItemView {
-                    background-color: #404040;
-                    color: white;
-                    border: 1px solid #555;
-                    selection-background-color: #0078d4;
-                    selection-color: white;
-                    outline: none;
-                    min-width: 200px;
-                }
-                FontComboBox QAbstractItemView::item {
-                    padding: 5px 10px;
-                    font-size: 11px;
-                }
-                FontComboBox QAbstractItemView::item:hover {
-                    background-color: #505050;
-                }
-                FontComboBox QAbstractItemView::item:selected {
-                    background-color: #0078d4;
-                    color: white;
-                }
-            """)
+                /* NÃO mexe no QAbstractItemView - deixa o sistema controlar */
+            """
         else:
-            self.setStyleSheet("""
-                FontComboBox {
+            # Estilo MÍNIMO para tema claro
+            style = """
+                QComboBox {
                     background-color: white;
                     color: #333;
                     border: 1px solid #ccc;
@@ -131,45 +110,25 @@ class FontComboBox(QComboBox):
                     padding-right: 20px;
                     min-height: 30px;
                 }
-                FontComboBox:hover {
+                QComboBox:hover {
                     border: 1px solid #999;
-                    background-color: #f8f9fa;
                 }
-                FontComboBox:focus {
-                    border: 1px solid #0078d4;
-                }
-                FontComboBox::drop-down {
+                QComboBox::drop-down {
                     border: none;
                     width: 25px;
                 }
-                FontComboBox::down-arrow {
-                    width: 12px;
-                    height: 12px;
+                QComboBox::down-arrow {
+                    image: none;
                     border-left: 4px solid transparent;
                     border-right: 4px solid transparent;
                     border-top: 6px solid #333;
+                    width: 0;
+                    height: 0;
                 }
-                FontComboBox QAbstractItemView {
-                    background-color: white;
-                    color: #333;
-                    border: 1px solid #ccc;
-                    selection-background-color: #e6f3ff;
-                    selection-color: #333;
-                    outline: none;
-                    min-width: 200px;
-                }
-                FontComboBox QAbstractItemView::item {
-                    padding: 5px 10px;
-                    font-size: 11px;
-                }
-                FontComboBox QAbstractItemView::item:hover {
-                    background-color: #f0f0f0;
-                }
-                FontComboBox QAbstractItemView::item:selected {
-                    background-color: #e6f3ff;
-                    color: #333;
-                }
-            """)
+                /* NÃO mexe no QAbstractItemView - deixa o sistema controlar */
+            """
+        
+        self.setStyleSheet(style)
 
 class MainWindow(QMainWindow):
     def __init__(self, config, language_manager, app_icon):
@@ -324,10 +283,12 @@ class MainWindow(QMainWindow):
         font_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
         font_layout.addWidget(QLabel("Fonte:"))
         
-        # Usar o novo FontComboBox customizado
+        # Usar o novo FontComboBox SIMPLIFICADO
         self.font_combo = FontComboBox()
         self.font_combo.setMinimumWidth(250)
-        self.font_combo.setMaxVisibleItems(15)
+        
+        # Configuração SIMPLES para combobox normal
+        self.font_combo.setMaxVisibleItems(15)  # Mostra 15 itens
         
         # Carregar TODAS as fontes do sistema
         self.load_system_fonts()
