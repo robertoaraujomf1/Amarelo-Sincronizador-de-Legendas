@@ -1,7 +1,10 @@
+# src/gui/main_window.py - VERSÃO COMPLETA E FUNCIONAL
 from PySide6.QtWidgets import (QMainWindow, QVBoxLayout, QHBoxLayout, QPushButton, 
                             QLabel, QLineEdit, QFileDialog, QProgressBar, QTextEdit,
                             QGroupBox, QComboBox, QSpinBox, QColorDialog, QMessageBox,
-                            QTabWidget, QWidget, QFrame, QCheckBox, QApplication)
+                            QTabWidget, QWidget, QFrame, QCheckBox, QApplication,
+                            QRadioButton, QButtonGroup, QDialog, QDialogButtonBox,
+                            QFormLayout)
 from PySide6.QtCore import Qt, QThread, Signal, QSize
 from PySide6.QtGui import QFont, QColor, QPalette, QPixmap, QGuiApplication, QFontDatabase, QIcon, QFontMetrics
 import os
@@ -12,14 +15,74 @@ from src.gui.settings_dialog import SettingsDialog
 from src.gui.style_manager import StyleManager
 from src.gui.theme_manager import apply_dark_theme
 
+
+class LanguageDialog(QDialog):
+    """Diálogo para seleção de idioma quando não há legenda"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Seleção de Idioma")
+        self.setModal(True)
+        self.setMinimumWidth(300)
+        
+        layout = QVBoxLayout(self)
+        
+        # Label informativo
+        info_label = QLabel(
+            "Nenhuma legenda encontrada para os vídeos.\n"
+            "Selecione o idioma para gerar legendas:"
+        )
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+        
+        # Combobox de idiomas
+        form_layout = QFormLayout()
+        self.language_combo = QComboBox()
+        self.language_combo.addItems([
+            "Português (Brasil)",
+            "Português (Portugal)", 
+            "Inglês (EUA)",
+            "Inglês (Reino Unido)",
+            "Espanhol",
+            "Francês",
+            "Alemão",
+            "Italiano",
+            "Japonês"
+        ])
+        form_layout.addRow("Idioma:", self.language_combo)
+        layout.addLayout(form_layout)
+        
+        # Botões
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+    
+    def get_selected_language(self):
+        """Retorna o código do idioma selecionado"""
+        language_map = {
+            "Português (Brasil)": "pt-BR",
+            "Português (Portugal)": "pt-PT", 
+            "Inglês (EUA)": "en-US",
+            "Inglês (Reino Unido)": "en-GB",
+            "Espanhol": "es-ES",
+            "Francês": "fr-FR",
+            "Alemão": "de-DE",
+            "Italiano": "it-IT",
+            "Japonês": "ja-JP"
+        }
+        current_text = self.language_combo.currentText()
+        return language_map.get(current_text, "pt-BR")
+
+
 class SyncThread(QThread):
     progress_updated = Signal(int, str)
     finished = Signal(bool, str)
     
-    def __init__(self, directory, subtitle_settings):
+    def __init__(self, directory, subtitle_settings, target_language=None):
         super().__init__()
         self.directory = directory
         self.subtitle_settings = subtitle_settings
+        self.target_language = target_language
         self.sync_engine = SubtitleSyncEngine()
         
     def run(self):
@@ -31,34 +94,73 @@ class SyncThread(QThread):
             
             total_pairs = len(pairs)
             if total_pairs == 0:
-                self.finished.emit(False, "Nenhum par vídeo-legenda encontrado.")
+                self.finished.emit(False, "Nenhum vídeo encontrado no diretório.")
                 return
+            
+            # Adicionar idioma alvo às configurações
+            if self.target_language:
+                self.subtitle_settings['target_language'] = self.target_language
+            
+            # Contadores para estatísticas
+            processed = 0
+            with_subtitles = 0
+            generated = 0
+            synced = 0
+            errors = 0
             
             for i, (video_path, subtitle_path) in enumerate(pairs):
                 progress = int((i / total_pairs) * 100)
                 self.progress_updated.emit(
                     progress,
-                    f"Analisando: {os.path.basename(video_path)}"
+                    f"Processando: {os.path.basename(video_path)}"
                 )
                 
-                # Analisar e sincronizar
+                # Analisar e sincronizar/gerar legenda
                 result = self.sync_engine.analyze_and_sync(
                     video_path, 
                     subtitle_path, 
                     self.subtitle_settings
                 )
                 
-                if not result:
+                if result:
+                    processed += 1
+                    if subtitle_path:
+                        with_subtitles += 1
+                        # Verificar se foi sincronizada
+                        self.progress_updated.emit(
+                            progress,
+                            f"Legenda sincronizada: {os.path.basename(video_path)}"
+                        )
+                        synced += 1
+                    else:
+                        generated += 1
+                        self.progress_updated.emit(
+                            progress,
+                            f"Legenda gerada: {os.path.basename(video_path)}"
+                        )
+                else:
+                    errors += 1
                     self.progress_updated.emit(
                         progress,
-                        f"Erro ao sincronizar: {os.path.basename(video_path)}"
+                        f"Erro ao processar: {os.path.basename(video_path)}"
                     )
             
-            self.progress_updated.emit(100, "Análise concluída!")
-            self.finished.emit(True, "Sincronização concluída com sucesso!")
+            # Resumo
+            summary = (
+                f"Processamento concluído!\n"
+                f"Vídeos processados: {processed}/{total_pairs}\n"
+                f"Com legenda existente: {with_subtitles}\n"
+                f"Legendas sincronizadas: {synced}\n"
+                f"Legendas geradas: {generated}\n"
+                f"Erros: {errors}"
+            )
+            
+            self.progress_updated.emit(100, "Processamento concluído!")
+            self.finished.emit(True, summary)
             
         except Exception as e:
-            self.finished.emit(False, f"Erro durante a sincronização: {str(e)}")
+            self.finished.emit(False, f"Erro durante o processamento: {str(e)}")
+
 
 class FontComboBox(QComboBox):
     def __init__(self, parent=None):
@@ -96,7 +198,6 @@ class FontComboBox(QComboBox):
                     width: 0;
                     height: 0;
                 }
-                /* NÃO mexe no QAbstractItemView - deixa o sistema controlar */
             """
         else:
             # Estilo MÍNIMO para tema claro
@@ -125,10 +226,10 @@ class FontComboBox(QComboBox):
                     width: 0;
                     height: 0;
                 }
-                /* NÃO mexe no QAbstractItemView - deixa o sistema controlar */
             """
         
         self.setStyleSheet(style)
+
 
 class MainWindow(QMainWindow):
     def __init__(self, config, language_manager, app_icon):
@@ -170,8 +271,6 @@ class MainWindow(QMainWindow):
         main_layout.setSpacing(20)
         main_layout.setContentsMargins(30, 30, 30, 30)
         
-        # REMOVIDO: Cabeçalho com título
-        
         # Seção de seleção de pasta
         folder_section = self.create_folder_section()
         main_layout.addWidget(folder_section)
@@ -198,11 +297,11 @@ class MainWindow(QMainWindow):
         
         folder_layout = QHBoxLayout()
         self.folder_path = QLineEdit()
-        self.folder_path.setPlaceholderText("Selecione a pasta contendo os vídeos e legendas...")
+        self.folder_path.setPlaceholderText("Selecione a pasta contendo os vídeos...")
         folder_layout.addWidget(self.folder_path)
         
         browse_btn = QPushButton()
-        browse_btn.setFixedSize(120, 100)  # BOTÃO AINDA MAIOR
+        browse_btn.setFixedSize(120, 100)
         # Adicionar ícone de pasta
         if os.path.exists("assets/icons/folder_icon.png"):
             pixmap = QPixmap("assets/icons/folder_icon.png")
@@ -226,50 +325,54 @@ class MainWindow(QMainWindow):
         
         layout.addLayout(folder_layout)
         
-        # Informação sobre bloqueio de arquivos (OCULTÁVEL)
-        self.file_lock_frame = QFrame()
-        self.file_lock_frame.setStyleSheet("""
+        # Informação sobre processamento
+        self.info_frame = QFrame()
+        self.info_frame.setStyleSheet("""
             QFrame {
                 background-color: #FFF3E0;
                 border-radius: 5px;
                 border: 1px solid #FFE0B2;
             }
         """)
-        file_lock_layout = QVBoxLayout(self.file_lock_frame)
-        file_lock_layout.setContentsMargins(10, 5, 10, 5)
+        info_layout = QVBoxLayout(self.info_frame)
+        info_layout.setContentsMargins(10, 5, 10, 5)
+
+        # Layout para o texto e o botão de ocultar
+        top_info_layout = QHBoxLayout()
         
-        file_lock_header = QHBoxLayout()
-        
-        self.file_lock_label = QLabel(
-            "⚠️ Durante a análise, os arquivos serão bloqueados para evitar modificações. "
-            "Não mova, renomeie ou exclua arquivos até que a análise seja concluída."
+        info_label = QLabel(
+            "📹 O aplicativo processará TODOS os vídeos da pasta.\n"
+            "• Se houver legenda: Verificará sincronização e corrigirá se necessário\n"
+            "• Se não houver legenda: Gerará legenda no idioma selecionado"
         )
-        self.file_lock_label.setWordWrap(True)
-        self.file_lock_label.setStyleSheet("color: #FF6B35; font-size: 12px;")
-        file_lock_header.addWidget(self.file_lock_label)
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet("color: #FF6B35; font-size: 12px; border: none; background: transparent;")
+        top_info_layout.addWidget(info_label)
+
+        top_info_layout.addStretch()
         
-        # Botão para ocultar/mostrar o aviso
-        self.hide_lock_btn = QPushButton("✕")
-        self.hide_lock_btn.setFixedSize(24, 24)
-        self.hide_lock_btn.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                border: 1px solid #FF6B35;
-                color: #FF6B35;
-                border-radius: 3px;
-                font-size: 10px;
-                font-weight: bold;
+        info_label = QLabel(
+            "📹 O aplicativo processará TODOS os vídeos da pasta.\n"
+            "• Se houver legenda: Verificará sincronização e corrigirá se necessário\n"
+            "• Se não houver legenda: Gerará legenda no idioma selecionado"
+        )
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet("color: #FF6B35; font-size: 12px;")
+        
+        hide_button = QPushButton("Ocultar")
+        hide_button.setCursor(Qt.PointingHandCursor)
+        hide_button.setStyleSheet("""
+            QPushButton { 
+                font-size: 10px; color: #FF6B35; border: 1px solid #FF6B35; 
+                border-radius: 5px; padding: 2px 8px; max-height: 20px;
             }
-            QPushButton:hover {
-                background-color: #FF6B35;
-                color: white;
-            }
+            QPushButton:hover { background-color: #FFE0B2; }
         """)
-        self.hide_lock_btn.clicked.connect(self.toggle_file_lock_warning)
-        file_lock_header.addWidget(self.hide_lock_btn)
+        hide_button.clicked.connect(self.info_frame.hide)
+        top_info_layout.addWidget(hide_button, 0, Qt.AlignTop)
+        info_layout.addLayout(top_info_layout)
         
-        file_lock_layout.addLayout(file_lock_header)
-        layout.addWidget(self.file_lock_frame)
+        layout.addWidget(self.info_frame)
         
         return group
     
@@ -283,14 +386,11 @@ class MainWindow(QMainWindow):
         font_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
         font_layout.addWidget(QLabel("Fonte:"))
         
-        # Usar o novo FontComboBox SIMPLIFICADO
         self.font_combo = FontComboBox()
         self.font_combo.setMinimumWidth(250)
+        self.font_combo.setMaxVisibleItems(15)
         
-        # Configuração SIMPLES para combobox normal
-        self.font_combo.setMaxVisibleItems(15)  # Mostra 15 itens
-        
-        # Carregar TODAS as fontes do sistema
+        # Carregar fontes do sistema
         self.load_system_fonts()
         
         font_layout.addWidget(self.font_combo)
@@ -301,18 +401,16 @@ class MainWindow(QMainWindow):
         self.font_size.setValue(16)
         font_layout.addWidget(self.font_size)
         
-        # Botão para Negrito - "N" em negrito (toggle button)
+        # Botão para Negrito
         self.bold_button = QPushButton("N")
-        self.bold_button.setCheckable(True)  # Torna o botão um toggle button
+        self.bold_button.setCheckable(True)
         self.bold_button.setFixedSize(40, 30)
         
-        # Usar a mesma fonte global do aplicativo (já configurada como size 11)
         app_font = self.font()
         bold_font = QFont(app_font)
         bold_font.setBold(True)
         self.bold_button.setFont(bold_font)
         
-        # Estilo para o botão de negrito - será ajustado pelo tema
         self.bold_button.setStyleSheet("""
             QPushButton {
                 background-color: #f0f0f0;
@@ -333,7 +431,6 @@ class MainWindow(QMainWindow):
             }
         """)
         
-        # Tooltip para explicar que é negrito - com fonte maior
         self.bold_button.setToolTip("<span style='font-size: 11pt; font-weight: bold;'>Negrito</span>")
         font_layout.addWidget(self.bold_button)
         
@@ -368,208 +465,13 @@ class MainWindow(QMainWindow):
         self.font_size.valueChanged.connect(self.on_font_size_changed)
         self.bold_button.toggled.connect(self.on_bold_toggled)
         
-        # Informações sobre formatação (OCULTÁVEL)
-        self.format_info_frame = QFrame()
-        self.format_info_frame.setStyleSheet("""
-            QFrame {
-                background-color: #f8f9fa;
-                border-radius: 5px;
-                border: 1px solid #dee2e6;
-            }
-        """)
-        format_info_layout = QVBoxLayout(self.format_info_frame)
-        format_info_layout.setContentsMargins(10, 5, 10, 5)
-        
-        format_info_header = QHBoxLayout()
-        
-        self.format_info_label = QLabel(
-            "📝 As legendas serão centralizadas na parte inferior. "
-            "Cada bloco terá no máximo 2 linhas e respeitará as margens da tela."
-        )
-        self.format_info_label.setWordWrap(True)
-        self.format_info_label.setStyleSheet("color: #666; font-size: 12px;")
-        format_info_header.addWidget(self.format_info_label)
-        
-        # Botão para ocultar/mostrar o aviso
-        self.hide_format_btn = QPushButton("✕")
-        self.hide_format_btn.setFixedSize(24, 24)
-        self.hide_format_btn.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                border: 1px solid #666;
-                color: #666;
-                border-radius: 3px;
-                font-size: 10px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #666;
-                color: white;
-            }
-        """)
-        self.hide_format_btn.clicked.connect(self.toggle_format_info)
-        format_info_header.addWidget(self.hide_format_btn)
-        
-        format_info_layout.addLayout(format_info_header)
-        layout.addWidget(self.format_info_frame)
-        
         return group
     
-    def toggle_file_lock_warning(self):
-        """Alterna a visibilidade do aviso sobre bloqueio de arquivos"""
-        is_visible = self.file_lock_frame.isVisible()
-        self.file_lock_frame.setVisible(not is_visible)
-        
-        # Salvar preferência
-        self.config.set_setting('show_file_lock_warning', not is_visible)
-        
-        # Atualizar texto do botão
-        self.hide_lock_btn.setText("✕" if not is_visible else "↻")
-        if not is_visible:
-            self.hide_lock_btn.setToolTip("Ocultar aviso")
-        else:
-            self.hide_lock_btn.setToolTip("Mostrar aviso")
-    
-    def toggle_format_info(self):
-        """Alterna a visibilidade da informação sobre formatação"""
-        is_visible = self.format_info_frame.isVisible()
-        self.format_info_frame.setVisible(not is_visible)
-        
-        # Salvar preferência
-        self.config.set_setting('show_format_info', not is_visible)
-        
-        # Atualizar texto do botão
-        self.hide_format_btn.setText("✕" if not is_visible else "↻")
-        if not is_visible:
-            self.hide_format_btn.setToolTip("Ocultar informação")
-        else:
-            self.hide_format_btn.setToolTip("Mostrar informação")
-    
-    def load_system_fonts(self):
-        """Carrega TODAS as fontes do sistema e as exibe com sua aparência real"""
-        try:
-            # Obter todas as famílias de fontes do sistema
-            font_database = QFontDatabase()
-            all_font_families = font_database.families()
-            
-            # Ordenar as fontes alfabeticamente
-            sorted_fonts = sorted(all_font_families)
-            
-            self.font_combo.clear()
-            
-            # Adicionar cada fonte com sua aparência real
-            for font_family in sorted_fonts:
-                # Verificar se a fonte tem suporte a caracteres latinos básicos
-                if self.has_latin_support(font_family):
-                    self.font_combo.addItem(font_family)
-                    
-                    # Definir a fonte para o item (ícone no combobox)
-                    index = self.font_combo.count() - 1
-                    self.font_combo.setItemData(index, QFont(font_family, 10), Qt.ItemDataRole.FontRole)
-            
-            # Se não conseguiu carregar fontes, usar fallback
-            if self.font_combo.count() == 0:
-                self.load_fallback_fonts()
-                
-            # Usar messagebox em vez de log_text que pode não estar pronto
-            if hasattr(self, 'log_text') and self.log_text:
-                self.log_text.append(f"✅ Carregadas {self.font_combo.count()} fontes do sistema")
-            
-        except Exception as e:
-            # Usar messagebox em caso de erro durante inicialização
-            if hasattr(self, 'log_text') and self.log_text:
-                self.log_text.append(f"❌ Erro ao carregar fontes: {str(e)}")
-            self.load_fallback_fonts()
-    
-    def has_latin_support(self, font_family):
-        """Verifica se a fonte tem suporte a caracteres latinos básicos"""
-        try:
-            # Criar fonte de teste
-            test_font = QFont(font_family, 10)
-            test_font_metrics = QFontMetrics(test_font)
-            
-            # Testar com caracteres latinos básicos
-            test_string = "AaBbCc"
-            
-            # Se a fonte não suportar os caracteres, retornará uma métrica diferente
-            # ou largura zero para alguns caracteres
-            width = test_font_metrics.horizontalAdvance(test_string)
-            
-            # Se a largura for zero ou muito pequena, a fonte provavelmente não suporta latim
-            return width > 20
-            
-        except:
-            return True  # Em caso de erro, assume que tem suporte
-    
-    def load_fallback_fonts(self):
-        """Carrega fontes fallback caso não consiga obter as do sistema"""
-        fallback_fonts = [
-            "Arial", "Segoe UI", "Times New Roman", "Verdana", "Tahoma",
-            "Calibri", "Microsoft Sans Serif", "Courier New", "Georgia",
-            "Impact", "Comic Sans MS", "Trebuchet MS", "Arial Black",
-            "Palatino Linotype", "Lucida Sans Unicode", "Franklin Gothic Medium"
-        ]
-        
-        for font in fallback_fonts:
-            self.font_combo.addItem(font)
-            index = self.font_combo.count() - 1
-            self.font_combo.setItemData(index, QFont(font, 10), Qt.ItemDataRole.FontRole)
-    
-    def update_font_preview(self, font_family=None):
-        """Atualiza o preview da fonte selecionada"""
-        try:
-            if font_family is None:
-                font_family = self.font_combo.currentText()
-            
-            font_size = self.font_size.value()
-            preview_font = QFont(font_family, font_size)
-            
-            # Aplicar negrito se o botão estiver pressionado
-            if self.bold_button.isChecked():
-                preview_font.setBold(True)
-            else:
-                preview_font.setBold(False)
-            
-            self.font_preview_label.setFont(preview_font)
-            
-            # Atualizar também a cor se estiver definida
-            current_style = self.font_preview_label.styleSheet()
-            if "color:" in current_style:
-                # Manter a cor atual se existir
-                pass
-            else:
-                # Definir cor padrão para contraste
-                self.font_preview_label.setStyleSheet(f"""
-                    QLabel {{
-                        background-color: #f8f9fa;
-                        border: 1px solid #dee2e6;
-                        padding: 8px;
-                        border-radius: 4px;
-                        min-width: 200px;
-                        color: #000000;
-                    }}
-                """)
-                
-        except Exception as e:
-            # Em caso de erro, usar fonte padrão
-            default_font = QFont("Arial", self.font_size.value())
-            if self.bold_button.isChecked():
-                default_font.setBold(True)
-            self.font_preview_label.setFont(default_font)
-    
-    def on_font_size_changed(self):
-        """Atualiza o preview quando o tamanho da fonte muda"""
-        self.update_font_preview()
-    
-    def on_bold_toggled(self):
-        """Atualiza o preview quando o negrito é alterado"""
-        self.update_font_preview()
-    
     def create_progress_section(self):
-        group = QGroupBox("Progresso da Análise")
+        group = QGroupBox("Progresso do Processamento")
         layout = QVBoxLayout(group)
         
-        self.status_label = QLabel("Status: Parado")
+        self.status_label = QLabel("Status: Pronto")
         layout.addWidget(self.status_label)
         
         self.progress_bar = QProgressBar()
@@ -582,7 +484,6 @@ class MainWindow(QMainWindow):
         group = QGroupBox("Log de Atividades")
         layout = QVBoxLayout(group)
         
-        # self.log_text já foi criado no __init__, apenas adicionar ao layout
         layout.addWidget(self.log_text)
         
         return group
@@ -591,7 +492,7 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout()
         
         self.sync_btn = QPushButton()
-        self.sync_btn.setFixedSize(180, 140)  # BOTÃO AINDA MAIOR
+        self.sync_btn.setFixedSize(180, 140)
         # Adicionar ícone de sincronização
         if os.path.exists("assets/icons/sync_icon.png"):
             pixmap = QPixmap("assets/icons/sync_icon.png")
@@ -617,7 +518,7 @@ class MainWindow(QMainWindow):
         self.sync_btn.clicked.connect(self.start_sync)
         
         settings_btn = QPushButton()
-        settings_btn.setFixedSize(160, 120)  # BOTÃO AINDA MAIOR
+        settings_btn.setFixedSize(160, 120)
         # Adicionar ícone de configurações
         if os.path.exists("assets/icons/settings_icon.png"):
             pixmap = QPixmap("assets/icons/settings_icon.png")
@@ -657,18 +558,34 @@ class MainWindow(QMainWindow):
             recent_folders.insert(0, folder)
             recent_folders = recent_folders[:5]
             self.config.set_setting('recent_folders', recent_folders)
+            
+            # Verificar vídeos na pasta
+            self.check_videos_in_folder(folder)
+    
+    def check_videos_in_folder(self, folder):
+        """Verifica se há vídeos na pasta selecionada"""
+        video_extensions = ['.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.m4v']
+        video_count = 0
+        
+        for root, dirs, files in os.walk(folder):
+            for file in files:
+                if any(file.lower().endswith(ext) for ext in video_extensions):
+                    video_count += 1
+        
+        if video_count > 0:
+            self.log_text.append(f"✅ Encontrados {video_count} vídeo(s) na pasta")
+        else:
+            self.log_text.append("⚠️ Nenhum vídeo encontrado na pasta")
     
     def choose_color(self):
         color = QColorDialog.getColor()
         if color.isValid():
             self.color_btn.setStyleSheet(f"background-color: {color.name()}; border: 1px solid #ccc;")
-            # Atualizar também o preview da fonte com a nova cor
             self.update_font_preview_color(color.name())
     
     def update_font_preview_color(self, color):
         """Atualiza a cor do texto no preview da fonte"""
         current_style = self.font_preview_label.styleSheet()
-        # Manter o estilo existente, mas atualizar a cor
         new_style = f"""
             QLabel {{
                 background-color: #f8f9fa;
@@ -690,6 +607,22 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Erro", "A pasta selecionada não existe.")
             return
         
+        # Verificar se há vídeos
+        video_extensions = ['.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.m4v']
+        has_videos = False
+        
+        for root, dirs, files in os.walk(self.current_directory):
+            for file in files:
+                if any(file.lower().endswith(ext) for ext in video_extensions):
+                    has_videos = True
+                    break
+            if has_videos:
+                break
+        
+        if not has_videos:
+            QMessageBox.warning(self, "Aviso", "Nenhum vídeo encontrado na pasta selecionada.")
+            return
+        
         # Configurações de legenda
         subtitle_settings = {
             'font_family': self.font_combo.currentText(),
@@ -698,40 +631,74 @@ class MainWindow(QMainWindow):
             'font_color': self.color_btn.styleSheet().split('background-color: ')[1].split(';')[0]
         }
         
+        # Carregar configurações de saída
+        output_mode = self.config.get_setting('output_mode', 'same_folder')
+        output_folder = self.config.get_setting('output_folder', 'output')
+        
+        subtitle_settings['output_mode'] = output_mode
+        subtitle_settings['output_folder'] = output_folder
+        
+        # Verificar se há legendas existentes
+        sync_engine = SubtitleSyncEngine()
+        pairs = sync_engine.find_video_subtitle_pairs(self.current_directory)
+        
+        videos_with_subtitles = sum(1 for _, subtitle_path in pairs if subtitle_path)
+        videos_without_subtitles = sum(1 for _, subtitle_path in pairs if not subtitle_path)
+        
+        self.log_text.append(f"📊 Análise da pasta:")
+        self.log_text.append(f"   • Total de vídeos: {len(pairs)}")
+        self.log_text.append(f"   • Com legenda: {videos_with_subtitles}")
+        self.log_text.append(f"   • Sem legenda: {videos_without_subtitles}")
+        
+        # Se houver vídeos sem legenda, perguntar idioma
+        target_language = None
+        if videos_without_subtitles > 0:
+            dialog = LanguageDialog(self)
+            if dialog.exec():
+                target_language = dialog.get_selected_language()
+                self.log_text.append(f"🌐 Idioma selecionado: {target_language}")
+            else:
+                self.log_text.append("❌ Processamento cancelado pelo usuário")
+                return
+        
         # Salvar configurações
         self.config.set_setting('font_family', subtitle_settings['font_family'])
         self.config.set_setting('font_size', subtitle_settings['font_size'])
         self.config.set_setting('font_bold', subtitle_settings['bold'])
         self.config.set_setting('font_color', subtitle_settings['font_color'])
         
-        # Iniciar thread de sincronização
-        self.sync_thread = SyncThread(self.current_directory, subtitle_settings)
+        # Iniciar thread de processamento
+        self.sync_thread = SyncThread(
+            self.current_directory, 
+            subtitle_settings, 
+            target_language
+        )
         self.sync_thread.progress_updated.connect(self.update_progress)
         self.sync_thread.finished.connect(self.sync_finished)
         
         self.sync_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
-        self.status_label.setText("Status: Análise e correções em andamento...")
+        self.status_label.setText("Status: Processamento em andamento...")
         
-        self.log_text.append("Iniciando análise de sincronização...")
+        self.log_text.append("▶️ Iniciando processamento...")
         self.sync_thread.start()
     
     def update_progress(self, value, message):
         self.progress_bar.setValue(value)
         self.status_label.setText(f"Status: {message}")
         if message:
-            self.log_text.append(message)
+            self.log_text.append(f"   {message}")
     
     def sync_finished(self, success, message):
         self.sync_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
         
         if success:
-            self.status_label.setText("Status: Análise concluída")
+            self.status_label.setText("Status: Processamento concluído")
             self.log_text.append("✅ " + message)
             QMessageBox.information(self, "Concluído", message)
         else:
-            self.status_label.setText("Status: Erro na análise")
+            self.status_label.setText("Status: Erro no processamento")
             self.log_text.append("❌ " + message)
             QMessageBox.critical(self, "Erro", message)
     
@@ -739,8 +706,102 @@ class MainWindow(QMainWindow):
         dialog = SettingsDialog(self.config, self.language_manager, self)
         if dialog.exec():
             self.load_settings()
-            # Aplicar tema imediatamente após salvar configurações
             self.apply_current_theme()
+    
+    def load_system_fonts(self):
+        """Carrega TODAS as fontes do sistema"""
+        try:
+            font_database = QFontDatabase()
+            all_font_families = font_database.families()
+            
+            sorted_fonts = sorted(all_font_families)
+            
+            self.font_combo.clear()
+            
+            for font_family in sorted_fonts:
+                if self.has_latin_support(font_family):
+                    self.font_combo.addItem(font_family)
+                    index = self.font_combo.count() - 1
+                    self.font_combo.setItemData(index, QFont(font_family, 10), Qt.ItemDataRole.FontRole)
+            
+            if self.font_combo.count() == 0:
+                self.load_fallback_fonts()
+                
+            if hasattr(self, 'log_text') and self.log_text:
+                self.log_text.append(f"✅ Carregadas {self.font_combo.count()} fontes do sistema")
+            
+        except Exception as e:
+            if hasattr(self, 'log_text') and self.log_text:
+                self.log_text.append(f"❌ Erro ao carregar fontes: {str(e)}")
+            self.load_fallback_fonts()
+    
+    def has_latin_support(self, font_family):
+        """Verifica se a fonte tem suporte a caracteres latinos básicos"""
+        try:
+            test_font = QFont(font_family, 10)
+            test_font_metrics = QFontMetrics(test_font)
+            test_string = "AaBbCc"
+            width = test_font_metrics.horizontalAdvance(test_string)
+            return width > 20
+        except:
+            return True
+    
+    def load_fallback_fonts(self):
+        """Carrega fontes fallback"""
+        fallback_fonts = [
+            "Arial", "Segoe UI", "Times New Roman", "Verdana", "Tahoma",
+            "Calibri", "Microsoft Sans Serif", "Courier New", "Georgia",
+            "Impact", "Comic Sans MS", "Trebuchet MS", "Arial Black",
+            "Palatino Linotype", "Lucida Sans Unicode", "Franklin Gothic Medium"
+        ]
+        
+        for font in fallback_fonts:
+            self.font_combo.addItem(font)
+            index = self.font_combo.count() - 1
+            self.font_combo.setItemData(index, QFont(font, 10), Qt.ItemDataRole.FontRole)
+    
+    def update_font_preview(self, font_family=None):
+        """Atualiza o preview da fonte selecionada"""
+        try:
+            if font_family is None:
+                font_family = self.font_combo.currentText()
+            
+            font_size = self.font_size.value()
+            preview_font = QFont(font_family, font_size)
+            
+            if self.bold_button.isChecked():
+                preview_font.setBold(True)
+            else:
+                preview_font.setBold(False)
+            
+            self.font_preview_label.setFont(preview_font)
+            
+            current_style = self.font_preview_label.styleSheet()
+            if "color:" in current_style:
+                pass
+            else:
+                self.font_preview_label.setStyleSheet(f"""
+                    QLabel {{
+                        background-color: #f8f9fa;
+                        border: 1px solid #dee2e6;
+                        padding: 8px;
+                        border-radius: 4px;
+                        min-width: 200px;
+                        color: #000000;
+                    }}
+                """)
+                
+        except Exception as e:
+            default_font = QFont("Arial", self.font_size.value())
+            if self.bold_button.isChecked():
+                default_font.setBold(True)
+            self.font_preview_label.setFont(default_font)
+    
+    def on_font_size_changed(self):
+        self.update_font_preview()
+    
+    def on_bold_toggled(self):
+        self.update_font_preview()
     
     def load_settings(self):
         font_family = self.config.get_setting('font_family', 'Arial')
@@ -753,82 +814,29 @@ class MainWindow(QMainWindow):
         self.bold_button.setChecked(font_bold)
         self.color_btn.setStyleSheet(f"background-color: {font_color}; border: 1px solid #ccc;")
         
-        # Carregar preferências de visibilidade dos avisos
-        show_file_lock_warning = self.config.get_setting('show_file_lock_warning', True)
-        show_format_info = self.config.get_setting('show_format_info', True)
-        
-        self.file_lock_frame.setVisible(show_file_lock_warning)
-        self.format_info_frame.setVisible(show_format_info)
-        
-        # Atualizar textos dos botões
-        self.hide_lock_btn.setText("✕" if show_file_lock_warning else "↻")
-        self.hide_lock_btn.setToolTip("Ocultar aviso" if show_file_lock_warning else "Mostrar aviso")
-        
-        self.hide_format_btn.setText("✕" if show_format_info else "↻")
-        self.hide_format_btn.setToolTip("Ocultar informação" if show_format_info else "Mostrar informação")
-        
-        # Atualizar preview com as configurações carregadas
         self.update_font_preview(font_family)
         self.update_font_preview_color(font_color)
     
     def apply_current_theme(self):
-        """Aplica o tema atual baseado nas configurações salvas"""
+        """Aplica o tema atual"""
         theme = self.config.get_setting('theme', 'light')
         is_dark = (theme == 'dark')
         
         if is_dark:
-            # Aplicar tema escuro
             apply_dark_theme(QApplication.instance())
-            # Aplicar estilos específicos para tema escuro
             self.apply_dark_theme_styles()
         else:
-            # Aplicar tema claro (reset para padrão)
             QApplication.instance().setStyle("Fusion")
             QApplication.instance().setPalette(QApplication.instance().style().standardPalette())
-            # Aplicar estilos específicos para tema claro
             self.apply_light_theme_styles()
         
-        # Aplicar tema à combobox de fontes
         if hasattr(self, 'font_combo') and isinstance(self.font_combo, FontComboBox):
             self.font_combo.apply_theme(is_dark)
         
-        # Reaplicar o estilo principal
         self.style_manager.apply_style(self, 'main')
     
     def apply_dark_theme_styles(self):
-        """Aplica estilos específicos para o tema escuro"""
-        # Ajustar cores dos botões de ocultar/mostrar
-        self.hide_lock_btn.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                border: 1px solid #FF8C42;
-                color: #FF8C42;
-                border-radius: 3px;
-                font-size: 10px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #FF8C42;
-                color: white;
-            }
-        """)
-        
-        self.hide_format_btn.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                border: 1px solid #AAAAAA;
-                color: #AAAAAA;
-                border-radius: 3px;
-                font-size: 10px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #AAAAAA;
-                color: white;
-            }
-        """)
-        
-        # Ajustar botão de negrito para tema escuro
+        """Aplica estilos para tema escuro"""
         self.bold_button.setStyleSheet("""
             QPushButton {
                 background-color: #404040;
@@ -850,13 +858,10 @@ class MainWindow(QMainWindow):
             }
         """)
         
-        # Ajustar botão de cor para tema escuro
         current_color_style = self.color_btn.styleSheet()
         if "background-color: #FFFFFF" in current_color_style:
-            # Se for branco, manter, senão usar a cor atual
             self.color_btn.setStyleSheet("background-color: #FFFFFF; border: 1px solid #606060;")
         
-        # Ajustar preview da fonte para tema escuro
         current_preview_style = self.font_preview_label.styleSheet()
         if "background-color: #f8f9fa" in current_preview_style:
             self.font_preview_label.setStyleSheet("""
@@ -870,98 +875,16 @@ class MainWindow(QMainWindow):
                 }
             """)
         
-        # Ajustar frames informativos para tema escuro
-        self.file_lock_frame.setStyleSheet("""
+        self.info_frame.setStyleSheet("""
             QFrame {
                 background-color: #3A2C1C;
                 border-radius: 5px;
                 border: 1px solid #5A3C1C;
             }
         """)
-        
-        self.format_info_frame.setStyleSheet("""
-            QFrame {
-                background-color: #2d2d2d;
-                border-radius: 5px;
-                border: 1px solid #404040;
-            }
-        """)
-        
-        # Ajustar labels informativas
-        self.file_lock_label.setStyleSheet("color: #FFA726; font-size: 12px;")
-        self.format_info_label.setStyleSheet("color: #AAAAAA; font-size: 12px;")
-        
-        # Ajustar QSpinBox para tema escuro
-        self.font_size.setStyleSheet("""
-            QSpinBox {
-                background-color: #404040;
-                color: white;
-                border: 1px solid #555;
-                border-radius: 3px;
-                padding: 5px;
-            }
-            QSpinBox:hover {
-                border: 1px solid #777;
-            }
-            QSpinBox::up-button, QSpinBox::down-button {
-                background-color: #505050;
-                border: 1px solid #555;
-                width: 20px;
-            }
-            QSpinBox::up-button:hover, QSpinBox::down-button:hover {
-                background-color: #606060;
-            }
-            QSpinBox::up-arrow, QSpinBox::down-arrow {
-                width: 8px;
-                height: 8px;
-                border: 2px solid white;
-            }
-            QSpinBox::up-arrow {
-                border-bottom: none;
-                border-left-color: transparent;
-                border-right-color: transparent;
-            }
-            QSpinBox::down-arrow {
-                border-top: none;
-                border-left-color: transparent;
-                border-right-color: transparent;
-            }
-        """)
     
     def apply_light_theme_styles(self):
-        """Aplica estilos específicos para o tema claro"""
-        # Restaurar cores dos botões de ocultar/mostrar
-        self.hide_lock_btn.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                border: 1px solid #FF6B35;
-                color: #FF6B35;
-                border-radius: 3px;
-                font-size: 10px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #FF6B35;
-                color: white;
-            }
-        """)
-        
-        self.hide_format_btn.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                border: 1px solid #666;
-                color: #666;
-                border-radius: 3px;
-                font-size: 10px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #666;
-                color: white;
-            }
-        """)
-        
-        # Restaurar botão de negrito para tema claro
+        """Aplica estilos para tema claro"""
         self.bold_button.setStyleSheet("""
             QPushButton {
                 background-color: #f0f0f0;
@@ -982,11 +905,9 @@ class MainWindow(QMainWindow):
             }
         """)
         
-        # Restaurar botão de cor
         current_color = self.color_btn.styleSheet().split('background-color: ')[1].split(';')[0]
         self.color_btn.setStyleSheet(f"background-color: {current_color}; border: 1px solid #ccc;")
         
-        # Restaurar preview da fonte
         current_preview_style = self.font_preview_label.styleSheet()
         if "background-color: #2d2d2d" in current_preview_style:
             self.font_preview_label.setStyleSheet("""
@@ -1000,73 +921,22 @@ class MainWindow(QMainWindow):
                 }
             """)
         
-        # Restaurar frames informativos
-        self.file_lock_frame.setStyleSheet("""
+        self.info_frame.setStyleSheet("""
             QFrame {
                 background-color: #FFF3E0;
                 border-radius: 5px;
                 border: 1px solid #FFE0B2;
             }
         """)
-        
-        self.format_info_frame.setStyleSheet("""
-            QFrame {
-                background-color: #f8f9fa;
-                border-radius: 5px;
-                border: 1px solid #dee2e6;
-            }
-        """)
-        
-        # Restaurar labels informativas
-        self.file_lock_label.setStyleSheet("color: #FF6B35; font-size: 12px;")
-        self.format_info_label.setStyleSheet("color: #666; font-size: 12px;")
-        
-        # Restaurar QSpinBox para tema claro
-        self.font_size.setStyleSheet("""
-            QSpinBox {
-                background-color: white;
-                color: #333;
-                border: 1px solid #ccc;
-                border-radius: 3px;
-                padding: 5px;
-            }
-            QSpinBox:hover {
-                border: 1px solid #999;
-            }
-            QSpinBox::up-button, QSpinBox::down-button {
-                background-color: #f0f0f0;
-                border: 1px solid #ccc;
-                width: 20px;
-            }
-            QSpinBox::up-button:hover, QSpinBox::down-button:hover {
-                background-color: #e0e0e0;
-            }
-            QSpinBox::up-arrow, QSpinBox::down-arrow {
-                width: 8px;
-                height: 8px;
-                border: 2px solid #333;
-            }
-            QSpinBox::up-arrow {
-                border-bottom: none;
-                border-left-color: transparent;
-                border-right-color: transparent;
-            }
-            QSpinBox::down-arrow {
-                border-top: none;
-                border-left-color: transparent;
-                border-right-color: transparent;
-            }
-        """)
     
     def apply_styles(self):
-        """Método mantido para compatibilidade"""
         self.apply_current_theme()
     
     def closeEvent(self, event):
         if self.sync_thread and self.sync_thread.isRunning():
             reply = QMessageBox.question(
                 self, 'Confirmação',
-                'A sincronização ainda está em andamento. Deseja realmente fechar?',
+                'O processamento ainda está em andamento. Deseja realmente fechar?',
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
             
@@ -1078,3 +948,7 @@ class MainWindow(QMainWindow):
                 event.ignore()
         else:
             event.accept()
+
+
+# Exportar a classe MainWindow
+__all__ = ['MainWindow']

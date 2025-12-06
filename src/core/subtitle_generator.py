@@ -1,56 +1,76 @@
-import pysrt
-from datetime import timedelta
-
+# src/core/subtitle_generator.py
+from datetime import datetime, timedelta
+from typing import Dict, Any
 class SubtitleGenerator:
+    """
+    Gera o conteúdo da legenda a partir de uma transcrição.
+    """
+
     def __init__(self):
         pass
-    
-    def create_subtitle_from_transcription(self, transcription, video_duration, output_path, language='pt-BR'):
-        """Cria arquivo de legenda a partir da transcrição"""
+
+    def generate(self, transcription: Dict, video_info: Dict, settings: Dict) -> Dict:
+        """
+        Converte uma transcrição em um formato de legenda estruturado.
+
+        Args:
+            transcription (Dict): O resultado da transcrição do áudio.
+                                  Deve conter 'language' e 'segments'.
+            video_info (Dict): Metadados do vídeo (não utilizado nesta versão,
+                               mas pode ser útil para lógicas futuras).
+            settings (Dict): Configurações de legenda (não utilizado nesta versão).
+
+        Returns:
+            Dict: Um dicionário estruturado representando a legenda,
+                  pronto para ser salvo pelo SubtitleEditor.
+        """
+        if not transcription or 'segments' not in transcription:
+            print("❌ Erro: Dados de transcrição inválidos para gerar legenda.")
+            return {'language': 'pt-BR', 'segments': []}
+
+        # A estrutura da transcrição já é muito parecida com o que precisamos.
+        # Esta classe pode, no futuro, incluir lógicas mais complexas, como:
+        # - Agrupar segmentos curtos.
+        # - Dividir segmentos longos.
+        # - Adicionar informações de estilo com base nas configurações.
+        # - Limitar o número de caracteres por linha.
+
+        # Por enquanto, apenas repassamos a estrutura.
+        subtitle_content = {
+            'language': transcription.get('language', 'pt-BR'),
+            'segments': self._format_segments(transcription.get('segments', []))
+        }
+
+        return subtitle_content
+
+    def _format_segments(self, segments: list) -> list:
+        """
+        Formata os segmentos da transcrição para o formato de legenda.
+        """
+        formatted_segments = []
+        for i, seg in enumerate(segments):
+            # Garante que as chaves essenciais existam
+            if 'start' in seg and 'end' in seg and 'text' in seg:
+                formatted_segments.append({
+                    'index': i + 1,
+                    'start': self._seconds_to_time(seg['start']),
+                    'end': self._seconds_to_time(seg['end']),
+                    'text': str(seg['text']).strip()
+                })
+        return formatted_segments
+
+    def _seconds_to_time(self, seconds: float) -> str:
+        """Converte segundos para string de tempo (HH:MM:SS,ms)."""
+        if not isinstance(seconds, (int, float)) or seconds < 0:
+            seconds = 0
         try:
-            subs = pysrt.SubRipFile()
+            hours = int(seconds // 3600)
+            minutes = int((seconds % 3600) // 60)
+            secs_float = seconds % 60
+            secs = int(secs_float)
+            milliseconds = int((secs_float - secs) * 1000)
             
-            # Dividir transcrição em frases
-            sentences = self.split_into_sentences(transcription)
-            
-            # Calcular duração por frase
-            if sentences:
-                time_per_sentence = video_duration / len(sentences)
-                
-                for i, sentence in enumerate(sentences):
-                    if sentence.strip():
-                        start_time = i * time_per_sentence
-                        end_time = (i + 1) * time_per_sentence
-                        
-                        # Criar item de legenda
-                        sub_item = pysrt.SubRipItem(
-                            index=i + 1,
-                            start=self.seconds_to_subrip_time(start_time),
-                            end=self.seconds_to_subrip_time(end_time),
-                            text=sentence.strip()
-                        )
-                        subs.append(sub_item)
-            
-            # Salvar arquivo
-            subs.save(output_path, encoding='utf-8')
-            return True
-            
+            return f"{hours:02d}:{minutes:02d}:{secs:02d},{milliseconds:03d}"
         except Exception as e:
-            print(f"Erro ao criar legenda: {str(e)}")
-            return False
-    
-    def split_into_sentences(self, text):
-        """Divide texto em sentenças"""
-        # Divisão simples por pontuação
-        import re
-        sentences = re.split(r'[.!?]+', text)
-        return [s.strip() for s in sentences if s.strip()]
-    
-    def seconds_to_subrip_time(self, seconds):
-        """Converte segundos para formato SubRipTime"""
-        hours = int(seconds // 3600)
-        minutes = int((seconds % 3600) // 60)
-        secs = int(seconds % 60)
-        millisecs = int((seconds - int(seconds)) * 1000)
-        
-        return pysrt.SubRipTime(hours, minutes, secs, millisecs)
+            print(f"⚠️ Erro ao converter segundos '{seconds}': {e}")
+            return "00:00:00,000"

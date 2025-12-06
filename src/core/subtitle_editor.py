@@ -1,11 +1,65 @@
 import pysrt
 import re
 from datetime import timedelta
+from typing import Dict, Optional, Any
+import os
 
 class SubtitleEditor:
     def __init__(self):
         self.max_lines = 2
         self.max_chars_per_line = 42  # Baseado em telas padrão
+
+    def read_subtitle(self, file_path: str) -> Optional[Dict]:
+        """Lê um arquivo de legenda e o converte para um formato de dicionário."""
+        try:
+            subs = pysrt.open(file_path, encoding='utf-8')
+            segments = []
+            for i, sub in enumerate(subs):
+                segments.append({
+                    'index': i + 1,
+                    'start': str(sub.start),
+                    'end': str(sub.end),
+                    'text': sub.text
+                })
+            
+            return {'language': 'unknown', 'segments': segments}
+        except Exception as e:
+            print(f"❌ Erro ao ler legenda '{file_path}': {e}")
+            return None
+
+    def save_subtitle(self, subtitle_content: Dict, output_path: str, settings: Dict[str, Any]) -> bool:
+        """Salva o conteúdo da legenda em um arquivo .srt."""
+        try:
+            if not subtitle_content or 'segments' not in subtitle_content:
+                print("⚠️ Conteúdo de legenda inválido para salvar.")
+                return False
+            
+            valid_segments = [s for s in subtitle_content['segments'] if s.get('text', '').strip()]
+            if not valid_segments:
+                print("⚠️ Nenhum segmento para salvar. Arquivo não será criado.")
+                return False
+
+            subs = pysrt.SubRipFile()
+            for seg in valid_segments:
+                try:
+                    start_time = pysrt.SubRipTime.from_string(seg['start'])
+                    end_time = pysrt.SubRipTime.from_string(seg['end'])
+                    
+                    sub = pysrt.SubRipItem(
+                        index=seg['index'],
+                        start=start_time,
+                        end=end_time,
+                        text=seg['text']
+                    )
+                    subs.append(sub)
+                except Exception as e:
+                    print(f"⚠️ Ignorando segmento inválido: {seg}. Erro: {e}")
+
+            subs.save(output_path, encoding='utf-8')
+            return True
+        except Exception as e:
+            print(f"❌ Erro ao salvar legenda em '{output_path}': {e}")
+            return False
     
     def apply_formatting(self, subs, subtitle_settings, video_info):
         """Aplica formatação às legendas"""
