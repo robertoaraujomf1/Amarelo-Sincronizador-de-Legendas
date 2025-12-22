@@ -1,6 +1,0 @@
-deep-translator
-pysrt
-moviepy
-imageio[ffmpeg]
-openai-whisper
-torch

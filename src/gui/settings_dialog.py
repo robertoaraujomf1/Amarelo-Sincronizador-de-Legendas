@@ -1,253 +1,57 @@
-from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
-                            QComboBox, QPushButton, QGroupBox, QCheckBox,
-                            QListWidget, QMessageBox)
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QGuiApplication, QFont
+from PySide6.QtWidgets import (
+    QDialog, QVBoxLayout, QLabel,
+    QRadioButton, QPushButton, QButtonGroup
+)
+
 
 class SettingsDialog(QDialog):
-    def __init__(self, config, language_manager, parent=None):
+    def __init__(self, config, parent=None):
         super().__init__(parent)
-        self.config = config
-        self.language_manager = language_manager
-        self.parent = parent
-        
-        # AUMENTAR FONTE GLOBAL
-        font = self.font()
-        font.setPointSize(11)
-        self.setFont(font)
-        
         self.setWindowTitle("Configurações")
-        self.setFixedSize(500, 400)
-        
-        self.setup_ui()
-        self.load_settings()
-        
-        # Aplicar tema atual ao diálogo
-        self.apply_current_theme()
-        
-    def setup_ui(self):
+        self.setFixedSize(350, 220)
+
+        self.config = config
+
         layout = QVBoxLayout(self)
-        
-        # Idioma
-        language_group = QGroupBox("Idioma")
-        language_layout = QVBoxLayout(language_group)
-        
-        lang_layout = QHBoxLayout()
-        lang_layout.addWidget(QLabel("Idioma do programa:"))
-        
-        self.language_combo = QComboBox()
-        self.language_combo.addItem("Sistema", "system")
-        self.language_combo.addItem("Português (Brasil)", "pt_BR")
-        self.language_combo.addItem("Português (Portugal)", "pt_PT")
-        self.language_combo.addItem("English (US)", "en_US")
-        self.language_combo.addItem("English (UK)", "en_GB")
-        self.language_combo.addItem("Français", "fr_FR")
-        self.language_combo.addItem("Deutsch", "de_DE")
-        self.language_combo.addItem("Español", "es_ES")
-        self.language_combo.addItem("日本語", "ja_JP")
-        
-        lang_layout.addWidget(self.language_combo)
-        lang_layout.addStretch()
-        
-        language_layout.addLayout(lang_layout)
-        layout.addWidget(language_group)
-        
-        # Tema
-        theme_group = QGroupBox("Aparência")
-        theme_layout = QVBoxLayout(theme_group)
-        
-        self.theme_combo = QComboBox()
-        self.theme_combo.addItem("Claro", "light")
-        self.theme_combo.addItem("Escuro", "dark")
-        
-        theme_layout.addWidget(QLabel("Tema:"))
-        theme_layout.addWidget(self.theme_combo)
-        layout.addWidget(theme_group)
-        
-        # Pastas recentes
-        recent_group = QGroupBox("Pastas Recentes")
-        recent_layout = QVBoxLayout(recent_group)
-        
-        self.recent_list = QListWidget()
-        recent_layout.addWidget(self.recent_list)
-        
-        clear_recent_btn = QPushButton("Limpar Lista")
-        clear_recent_btn.setStyleSheet("font-size: 14px; font-weight: bold;")
-        clear_recent_btn.clicked.connect(self.clear_recent_folders)
-        recent_layout.addWidget(clear_recent_btn)
-        
-        layout.addWidget(recent_group)
-        
-        # Botões
-        button_layout = QHBoxLayout()
-        
-        save_btn = QPushButton("Salvar")
-        save_btn.setStyleSheet("font-size: 14px; font-weight: bold;")
-        save_btn.clicked.connect(self.save_settings)
-        
-        cancel_btn = QPushButton("Cancelar")
-        cancel_btn.setStyleSheet("font-size: 14px; font-weight: bold;")
-        cancel_btn.clicked.connect(self.reject)
-        
-        button_layout.addStretch()
-        button_layout.addWidget(save_btn)
-        button_layout.addWidget(cancel_btn)
-        
-        layout.addLayout(button_layout)
-        
-    def load_settings(self):
-        # Carregar idioma
-        current_lang = self.config.get_setting('language', 'system')
-        index = self.language_combo.findData(current_lang)
-        if index >= 0:
-            self.language_combo.setCurrentIndex(index)
-        
-        # Carregar tema
-        current_theme = self.config.get_setting('theme', 'light')
-        index = self.theme_combo.findData(current_theme)
-        if index >= 0:
-            self.theme_combo.setCurrentIndex(index)
-        
-        # Carregar pastas recentes
-        recent_folders = self.config.get_setting('recent_folders', [])
-        self.recent_list.clear()
-        for folder in recent_folders:
-            self.recent_list.addItem(folder)
-    
-    def save_settings(self):
-        # Salvar idioma
-        language = self.language_combo.currentData()
-        
-        # Salvar tema
-        theme = self.theme_combo.currentData()
-        old_theme = self.config.get_setting('theme', 'light')
-        self.config.set_setting('theme', theme)
-        
-        # Aplicar mudanças
-        if self.parent:
-            # Usar o novo método set_language do LanguageManager
-            if hasattr(self.parent.language_manager, 'set_language'):
-                success = self.parent.language_manager.set_language(language)
-            else:
-                # Fallback para método antigo
-                self.parent.language_manager.load_language(language)
-                self.config.set_setting('language', language)
-            
-            # Se o tema mudou, aplicar imediatamente
-            if theme != old_theme and hasattr(self.parent, 'apply_current_theme'):
-                self.parent.apply_current_theme()
-        
-        QMessageBox.information(self, "Sucesso", "Configurações salvas com sucesso!")
-        self.accept()
-    
-    def clear_recent_folders(self):
-        self.config.set_setting('recent_folders', [])
-        self.recent_list.clear()
-        QMessageBox.information(self, "Sucesso", "Lista de pastas recentes limpa!")
-    
-    def apply_current_theme(self):
-        """Aplica o tema atual ao diálogo de configurações"""
-        theme = self.config.get_setting('theme', 'light')
-        
-        if theme == 'dark':
-            # Estilos para tema escuro no diálogo
-            self.setStyleSheet("""
-                QDialog {
-                    background-color: #2d2d2d;
-                }
-                QGroupBox {
-                    color: white;
-                    border: 1px solid #555;
-                    border-radius: 5px;
-                    margin-top: 10px;
-                    padding-top: 10px;
-                }
-                QGroupBox::title {
-                    subcontrol-origin: margin;
-                    left: 10px;
-                    padding: 0 5px 0 5px;
-                }
-                QLabel {
-                    color: white;
-                }
-                QComboBox {
-                    background-color: #404040;
-                    color: white;
-                    border: 1px solid #555;
-                    border-radius: 3px;
-                    padding: 5px;
-                }
-                QComboBox:hover {
-                    border: 1px solid #777;
-                }
-                QListWidget {
-                    background-color: #404040;
-                    color: white;
-                    border: 1px solid #555;
-                    border-radius: 3px;
-                }
-                QPushButton {
-                    background-color: #505050;
-                    color: white;
-                    border: 1px solid #555;
-                    border-radius: 3px;
-                    padding: 5px 15px;
-                }
-                QPushButton:hover {
-                    background-color: #606060;
-                }
-                QPushButton:pressed {
-                    background-color: #404040;
-                }
-            """)
+
+        layout.addWidget(QLabel("Onde salvar os arquivos de legenda:"))
+
+        self.group = QButtonGroup(self)
+
+        self.rb_overwrite = QRadioButton("Substituir arquivos originais")
+        self.rb_alternate = QRadioButton("Salvar com nome alternativo")
+        self.rb_output = QRadioButton("Salvar na pasta Output")
+
+        self.group.addButton(self.rb_overwrite)
+        self.group.addButton(self.rb_alternate)
+        self.group.addButton(self.rb_output)
+
+        layout.addWidget(self.rb_overwrite)
+        layout.addWidget(self.rb_alternate)
+        layout.addWidget(self.rb_output)
+
+        save_mode = self.config.get("save_mode", "overwrite")
+
+        if save_mode == "alternate":
+            self.rb_alternate.setChecked(True)
+        elif save_mode == "output":
+            self.rb_output.setChecked(True)
         else:
-            # Estilos para tema claro (reset para padrão)
-            self.setStyleSheet("""
-                QDialog {
-                    background-color: white;
-                }
-                QGroupBox {
-                    color: #333;
-                    border: 1px solid #ccc;
-                    border-radius: 5px;
-                    margin-top: 10px;
-                    padding-top: 10px;
-                }
-                QGroupBox::title {
-                    subcontrol-origin: margin;
-                    left: 10px;
-                    padding: 0 5px 0 5px;
-                }
-                QLabel {
-                    color: #333;
-                }
-                QComboBox {
-                    background-color: white;
-                    color: #333;
-                    border: 1px solid #ccc;
-                    border-radius: 3px;
-                    padding: 5px;
-                }
-                QComboBox:hover {
-                    border: 1px solid #999;
-                }
-                QListWidget {
-                    background-color: white;
-                    color: #333;
-                    border: 1px solid #ccc;
-                    border-radius: 3px;
-                }
-                QPushButton {
-                    background-color: #f0f0f0;
-                    color: #333;
-                    border: 1px solid #ccc;
-                    border-radius: 3px;
-                    padding: 5px 15px;
-                }
-                QPushButton:hover {
-                    background-color: #e0e0e0;
-                }
-                QPushButton:pressed {
-                    background-color: #d0d0d0;
-                }
-            """)
+            self.rb_overwrite.setChecked(True)
+
+        btn_save = QPushButton("Salvar")
+        btn_save.clicked.connect(self.save)
+
+        layout.addStretch()
+        layout.addWidget(btn_save)
+
+    def save(self):
+        if self.rb_alternate.isChecked():
+            self.config.set("save_mode", "alternate")
+        elif self.rb_output.isChecked():
+            self.config.set("save_mode", "output")
+        else:
+            self.config.set("save_mode", "overwrite")
+
+        self.config.save()
+        self.accept()

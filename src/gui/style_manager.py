@@ -1,4 +1,4 @@
-from PySide6.QtCore import QFile, QTextStream
+from PyQt5.QtCore import QFile, QTextStream
 class StyleManager:
     def __init__(self):
         self.styles = {}
@@ -8,7 +8,8 @@ class StyleManager:
             return self.styles[style_name]
         
         style_file = QFile(f"assets/styles/{style_name}.qss")
-        if style_file.exists() and style_file.open(QFile.OpenModeFlag.ReadOnly | QFile.OpenModeFlag.Text):
+        if style_file.exists() and style_file.open(QFile.Op,
+                                                   enModeFlag.ReadOnly | QFile.OpenModeFlag.Text):
             stream = QTextStream(style_file)
             style = stream.readAll()
             self.styles[style_name] = style
