@@ -1,10 +1,13 @@
 import os
-import threading
-
+from PySide6.QtCore import QObject, QThread, Signal
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QPushButton,
     QFileDialog, QMessageBox, QLabel, QComboBox
 )
+
+# Imports movidos para o topo para melhor organização
+from gui.progress_dialog import ProgressDialog
+from core.workflow_manager import WorkflowManager
 
 
 SUPPORTED_LANGS = {
@@ -20,6 +23,36 @@ SUPPORTED_LANGS = {
 }
 
 
+class Worker(QObject):
+    """
+    Worker para executar tarefas pesadas em uma thread separada,
+    evitando o congelamento da UI.
+    """
+    finished = Signal()
+    error = Signal(str)
+    progress = Signal(str, int, int)
+
+    def __init__(self, manager: WorkflowManager, directory: str):
+        super().__init__()
+        self.manager = manager
+        self.directory = directory
+
+    def run(self):
+        """Inicia a execução do processo."""
+        try:
+            self.manager.process_directory(
+                directory=self.directory,
+                progress_callback=self.progress.emit
+            )
+        except Exception as e:
+            import traceback
+            # Envia o erro com traceback para o thread principal
+            error_info = f"Ocorreu um erro inesperado:\n{e}\n\n{traceback.format_exc()}"
+            self.error.emit(error_info)
+        finally:
+            self.finished.emit()
+
+
 class MainWindow(QMainWindow):
     def __init__(self, config):
         super().__init__()
@@ -28,10 +61,9 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(500, 300)
 
         self.selected_dir = None
+        self.thread = None
 
         self._build_ui()
-
-    # ---------------- UI ----------------
 
     def _build_ui(self):
         central = QWidget(self)
@@ -39,22 +71,20 @@ class MainWindow(QMainWindow):
 
         self.label_dir = QLabel("Nenhum diretório selecionado")
         btn_select = QPushButton("Selecionar Diretório")
-        btn_start = QPushButton("Iniciar Sincronização")
+        self.btn_start = QPushButton("Iniciar Sincronização")
         btn_settings = QPushButton("Configurações")
 
         btn_select.clicked.connect(self.select_directory)
-        btn_start.clicked.connect(self.start)
+        self.btn_start.clicked.connect(self.start)
         btn_settings.clicked.connect(self.open_settings)
 
         layout.addWidget(self.label_dir)
         layout.addWidget(btn_select)
-        layout.addWidget(btn_start)
+        layout.addWidget(self.btn_start)
         layout.addWidget(btn_settings)
 
         layout.addStretch()
         self.setCentralWidget(central)
-
-    # ---------------- Ações ----------------
 
     def select_directory(self):
         directory = QFileDialog.getExistingDirectory(
@@ -65,13 +95,13 @@ class MainWindow(QMainWindow):
             self.label_dir.setText(directory)
 
     def open_settings(self):
-        # IMPORT TARDIO (evita QWidget antes do QApplication)
         from gui.settings_dialog import SettingsDialog
-
         dlg = SettingsDialog(self.config, self)
         dlg.exec()
 
-    # ---------------- Perguntas ----------------
+    def show_error(self, error_message: str):
+        """Exibe uma caixa de diálogo de erro crítico."""
+        QMessageBox.critical(self, "Erro na Execução", error_message)
 
     def ask_language_new(self, detected_lang):
         return self._ask_language(
@@ -104,45 +134,45 @@ class MainWindow(QMainWindow):
 
         if dialog.exec() == QMessageBox.Ok:
             return combo.currentData()
-
         return None
 
-    # ---------------- Execução ----------------
-
     def start(self):
-        if not self.selected_dir or not os.path.isdir(self.selected_dir):
-            QMessageBox.warning(
-                self, "Aviso", "Selecione um diretório válido."
-            )
+        """Inicia o processo de sincronização em uma thread separada."""
+        if self.thread and self.thread.isRunning():
+            QMessageBox.information(self, "Aviso", "Um processo já está em andamento.")
             return
 
-        # IMPORTS TARDIOS (evita QWidget antes do QApplication)
-        from gui.progress_dialog import ProgressDialog
-        from core.workflow_manager import WorkflowManager
+        if not self.selected_dir or not os.path.isdir(self.selected_dir):
+            QMessageBox.warning(self, "Aviso", "Selecione um diretório válido.")
+            return
 
-        progress = ProgressDialog(self)
-        progress.show()
+        self.btn_start.setEnabled(False)
 
-        manager = WorkflowManager(
-            config=self.config,
-            gpu_info={
-                "available": self.config.get_runtime_value("gpu_available"),
-                "name": self.config.get_runtime_value("gpu_name"),
-                "backend": self.config.get_runtime_value("gpu_backend"),
-            },
-            ui_callbacks={
-                "progress": progress.update_progress,
-                "ask_language_new": self.ask_language_new,
-                "ask_translate_existing": self.ask_translate_existing,
-            }
-        )
+        # Configura a caixa de diálogo de progresso
+        self.progress = ProgressDialog(self)
+        self.progress.setModal(True)
+        self.progress.show()
 
-        def run():
-            try:
-                manager.process_directory(self.selected_dir)
-            except Exception as e:
-                QMessageBox.critical(self, "Erro", str(e))
-            finally:
-                progress.close()
+        # Configura a thread e o worker
+        self.thread = QThread()
+        manager = WorkflowManager(config=self.config)
+        worker = Worker(manager, self.selected_dir)
+        worker.moveToThread(self.thread)
 
-        threading.Thread(target=run, daemon=True).start()
+        # Conecta os sinais da thread e do worker
+        self.thread.started.connect(worker.run)
+        worker.finished.connect(self.thread.quit)
+
+        # Limpeza automática da thread e do worker
+        worker.finished.connect(worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+
+        # Conecta os sinais do worker aos slots da UI
+        worker.error.connect(self.show_error)
+        worker.progress.connect(self.progress.update_progress)
+
+        # Ações a serem executadas quando o trabalho terminar
+        worker.finished.connect(self.progress.close)
+        worker.finished.connect(lambda: self.btn_start.setEnabled(True))
+
+        self.thread.start()

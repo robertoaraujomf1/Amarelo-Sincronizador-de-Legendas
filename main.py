@@ -8,11 +8,15 @@ from PySide6.QtCore import QFile, QTextStream
 
 
 # =========================
-# PATH BASE
+# SETUP PATHS
 # =========================
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
 
-
+from src.core.gpu_detector import detect_gpu
+from src.gui.main_window import MainWindow
+from src.utils.config_manager import ConfigManager
 # =========================
 # UI HELPERS
 # =========================
@@ -62,10 +66,6 @@ def show_fatal_error(message: str, details: str = ""):
 # =========================
 def main():
     try:
-        from gui.main_window import MainWindow
-        from utils.config_manager import ConfigManager
-        from core.gpu_detector import detect_gpu
-
         app = QApplication(sys.argv)
         app.setApplicationName("Amarelo - Sincronizador de Legendas")
 
@@ -76,9 +76,14 @@ def main():
         config.load()
 
         gpu_info = detect_gpu()
-        config.set_runtime_value("gpu_available", gpu_info["available"])
-        config.set_runtime_value("gpu_name", gpu_info["name"])
-        config.set_runtime_value("gpu_backend", gpu_info["backend"])
+        if gpu_info:
+            config.set_runtime_value("gpu_available", gpu_info.get("available", False))
+            config.set_runtime_value("gpu_name", gpu_info.get("name"))
+            config.set_runtime_value("gpu_backend", gpu_info.get("backend"))
+        else:
+            config.set_runtime_value("gpu_available", False)
+            config.set_runtime_value("gpu_name", None)
+            config.set_runtime_value("gpu_backend", None)
 
         window = MainWindow(config=config)
         window.show()
