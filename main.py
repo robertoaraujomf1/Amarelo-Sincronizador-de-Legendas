@@ -62,9 +62,9 @@ def show_fatal_error(message: str, details: str = ""):
 # =========================
 def main():
     try:
-        from src.gui.main_window import MainWindow
-        from src.utils.config_manager import ConfigManager
-        from src.core.gpu_detector import detect_gpu
+        from gui.main_window import MainWindow
+        from utils.config_manager import ConfigManager
+        from core.gpu_detector import detect_gpu
 
         app = QApplication(sys.argv)
         app.setApplicationName("Amarelo - Sincronizador de Legendas")
