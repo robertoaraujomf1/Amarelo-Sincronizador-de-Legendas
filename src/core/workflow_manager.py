@@ -1,13 +1,15 @@
+from __future__ import annotations  # Para forward references
+
 import os
 import logging
 from typing import List, Optional, Dict, Any, Tuple
 from dataclasses import dataclass, field
-from datetime import datetime
+import subprocess
 
 from .file_matcher import FileMatcher
 from .video_analyzer import VideoAnalyzer
 from .transcription_engine import TranscriptionEngine
-from .translator import Translator
+from .translator import Translator  # Agora deve importar corretamente
 from .subtitle_generator import SubtitleGenerator
 from .subtitle_sync import SubtitleSynchronizer
 from .gpu_detector import GPUDetector
@@ -30,7 +32,7 @@ class WorkflowState:
 class WorkflowManager:
     """Gerencia o fluxo completo de processamento de legendas"""
     
-    def __init__(self, config: 'ConfigManager'):
+    def __init__(self, config):
         self.config = config
         self.state = WorkflowState()
         self.file_locker = FileLocker()
@@ -187,10 +189,11 @@ class WorkflowManager:
                         self.state.status_message = "Mesclando legenda com vídeo..."
                         
                         for format_name, subtitle_path in subtitle_files.items():
-                            merged_path = self._merge_video_subtitle(
-                                video_path, subtitle_path, format_name
-                            )
-                            subtitle_files[f'merged_{format_name}'] = merged_path
+                            if format_name in ['srt', 'ass']:  # Apenas formatos suportados
+                                merged_path = self._merge_video_subtitle(
+                                    video_path, subtitle_path, format_name
+                                )
+                                subtitle_files[f'merged_{format_name}'] = merged_path
                     
                     results[video_path] = {
                         'status': 'completed',
@@ -246,9 +249,9 @@ class WorkflowManager:
         for i, segment in enumerate(segments, 1):
             subtitles.append({
                 'index': i,
-                'start': segment['start'],
-                'end': segment['end'],
-                'text': segment['text'],
+                'start': segment.get('start', 0),
+                'end': segment.get('end', 0),
+                'text': segment.get('text', ''),
                 'confidence': segment.get('confidence', 1.0)
             })
         
@@ -256,27 +259,38 @@ class WorkflowManager:
     
     def _detect_subtitle_language(self, subtitles: List[Dict]) -> str:
         """Detecta idioma das legendas"""
-        # Extrair texto de todas as legendas
-        text = ' '.join([sub['text'] for sub in subtitles[:10]])  # Usar apenas primeiras 10
+        if not subtitles:
+            return 'en'
+            
+        # Extrair texto das primeiras legendas
+        texts = []
+        for sub in subtitles[:10]:
+            text = sub.get('text', '')
+            if text.strip():
+                texts.append(text)
+        
+        if not texts:
+            return 'en'
+            
+        combined_text = ' '.join(texts)
         
         # Usar tradutor para detectar idioma
         try:
-            detected_lang = self.translator.detect_language(text)
+            detected_lang = self.translator.detect_language(combined_text)
             return detected_lang
-        except:
+        except Exception as e:
+            logger.warning(f"Erro ao detectar idioma: {e}")
             return 'en'  # Default para inglês
     
     def _merge_video_subtitle(self, video_path: str, subtitle_path: str, format_name: str) -> str:
         """Mescla legenda com vídeo usando ffmpeg"""
-        import subprocess
-        
         base_name = os.path.splitext(video_path)[0]
         output_path = f"{base_name}_with_subs.mp4"
         
         # Determinar filtro baseado no formato
         if format_name in ['ass', 'ssa']:
             filter_complex = f"ass='{subtitle_path}'"
-        else:
+        else:  # srt
             filter_complex = f"subtitles='{subtitle_path}'"
         
         # Comando ffmpeg para mesclar
@@ -293,11 +307,12 @@ class WorkflowManager:
         ]
         
         try:
-            subprocess.run(cmd, check=True, capture_output=True, text=True)
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8')
+            logger.info(f"Vídeo mesclado com sucesso: {output_path}")
             return output_path
         except subprocess.CalledProcessError as e:
             logger.error(f"Erro ao mesclar vídeo: {e.stderr}")
-            raise
+            raise Exception(f"Falha ao mesclar vídeo: {e.stderr}")
     
     def cancel(self):
         """Cancela o processamento em andamento"""

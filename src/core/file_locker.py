@@ -1,53 +1,57 @@
 import os
-import msvcrt
-import threading
+import logging
+import time
+from typing import Set
+
+logger = logging.getLogger(__name__)
 
 class FileLocker:
+    """Gerencia bloqueio de arquivos para evitar processamento duplicado"""
+    
     def __init__(self):
-        self.locked_files = {}
-        self.lock = threading.Lock()
+        self.locked_files: Set[str] = set()
     
-    def lock_file(self, file_path):
-        """Bloqueia um arquivo para evitar modificações externas"""
-        if not os.path.exists(file_path):
-            return None
+    def lock_file(self, file_path: str) -> bool:
+        """
+        Tenta bloquear um arquivo para processamento.
         
-        try:
-            # Tentar abrir o arquivo em modo exclusivo
-            file_handle = open(file_path, 'r+b')
+        Args:
+            file_path: Caminho do arquivo a ser bloqueado
             
-            # Tentar travar o arquivo
-            try:
-                msvcrt.locking(file_handle.fileno(), msvcrt.LK_NBLCK, 1)
-            except IOError:
-                file_handle.close()
-                return None
-            
-            with self.lock:
-                self.locked_files[file_path] = file_handle
-            
-            return file_path
-            
-        except Exception as e:
-            print(f"Erro ao bloquear arquivo {file_path}: {str(e)}")
-            return None
+        Returns:
+            True se o arquivo foi bloqueado, False se já estava bloqueado
+        """
+        if file_path in self.locked_files:
+            logger.warning(f"Arquivo já está bloqueado: {file_path}")
+            return False
+        
+        self.locked_files.add(file_path)
+        logger.debug(f"Arquivo bloqueado: {file_path}")
+        return True
     
-    def unlock_file(self, file_path):
-        """Libera o bloqueio de um arquivo"""
-        with self.lock:
-            if file_path in self.locked_files:
-                file_handle = self.locked_files[file_path]
-                try:
-                    # Liberar o lock
-                    msvcrt.locking(file_handle.fileno(), msvcrt.LK_UNLCK, 1)
-                    file_handle.close()
-                except:
-                    pass
-                finally:
-                    del self.locked_files[file_path]
+    def unlock_file(self, file_path: str) -> bool:
+        """
+        Libera o bloqueio de um arquivo.
+        
+        Args:
+            file_path: Caminho do arquivo a ser liberado
+            
+        Returns:
+            True se o arquivo foi liberado, False se não estava bloqueado
+        """
+        if file_path in self.locked_files:
+            self.locked_files.remove(file_path)
+            logger.debug(f"Arquivo liberado: {file_path}")
+            return True
+        
+        logger.warning(f"Arquivo não estava bloqueado: {file_path}")
+        return False
     
-    def unlock_all(self):
-        """Libera todos os arquivos bloqueados"""
-        with self.lock:
-            for file_path in list(self.locked_files.keys()):
-                self.unlock_file(file_path)
+    def is_locked(self, file_path: str) -> bool:
+        """Verifica se um arquivo está bloqueado"""
+        return file_path in self.locked_files
+    
+    def clear_all_locks(self):
+        """Libera todos os bloqueios"""
+        self.locked_files.clear()
+        logger.debug("Todos os bloqueios foram liberados")

@@ -8,21 +8,39 @@ logger = logging.getLogger(__name__)
 class ConfigManager:
     """Gerenciador de configurações"""
     
-    def __init__(self, config_file: str = None):
+    _instance = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    def __init__(self):
+        # Evitar múltiplas inicializações
+        if hasattr(self, '_initialized'):
+            return
+        
+        self._initialized = True
+        self.config_file = None
+        self.config = {}
+        self._default_config = self._get_default_config()
+        
+    def initialize(self, config_file: str = None):
+        """Inicializa com arquivo de configuração"""
         if config_file is None:
             config_dir = os.path.join(os.path.expanduser('~'), '.amarelo_legendas')
             os.makedirs(config_dir, exist_ok=True)
             config_file = os.path.join(config_dir, 'config.json')
         
         self.config_file = config_file
-        self.config = self._load_config()
+        self.load()
     
-    def _load_config(self) -> Dict[str, Any]:
-        """Carrega configurações do arquivo"""
-        default_config = {
+    def _get_default_config(self) -> Dict[str, Any]:
+        """Retorna configuração padrão"""
+        return {
             'general': {
                 'output_dir': 'output',
-                'language': 'pt-BR',
+                'language': 'pt_BR',
                 'theme': 'dark'
             },
             'transcription': {
@@ -40,36 +58,35 @@ class ConfigManager:
                 'size': 20,
                 'color': '#FFFFFF',
                 'bold': False,
-                'format_type': 'ass'  # 'ass' ou 'srt'
-            },
-            'sync': {
-                'method': 'scene',
-                'threshold': 0.5
-            },
-            'merge': {
-                'enabled': False,
-                'codec': 'libx264',
-                'crf': 23
+                'format_type': 'ass'
             }
         }
-        
+    
+    def load(self):
+        """Carrega configurações do arquivo"""
         try:
-            if os.path.exists(self.config_file):
+            if self.config_file and os.path.exists(self.config_file):
                 with open(self.config_file, 'r', encoding='utf-8') as f:
-                    user_config = json.load(f)
-                    self._merge_configs(default_config, user_config)
+                    self.config = json.load(f)
+                logger.info(f"Configurações carregadas de {self.config_file}")
+            else:
+                self.config = self._default_config.copy()
+                logger.info("Usando configurações padrão")
+                
+            # Garantir que todas as chaves padrão existam
+            self._merge_configs(self.config, self._default_config)
+            
         except Exception as e:
             logger.error(f"Erro ao carregar configurações: {e}")
-        
-        return default_config
+            self.config = self._default_config.copy()
     
-    def _merge_configs(self, default: Dict, user: Dict):
-        """Mescla configurações padrão com do usuário"""
-        for key, value in user.items():
-            if key in default and isinstance(default[key], dict) and isinstance(value, dict):
-                self._merge_configs(default[key], value)
-            else:
-                default[key] = value
+    def _merge_configs(self, target: Dict, source: Dict):
+        """Mescla configurações recursivamente"""
+        for key, value in source.items():
+            if key not in target:
+                target[key] = value
+            elif isinstance(value, dict) and isinstance(target[key], dict):
+                self._merge_configs(target[key], value)
     
     def get(self, key: str, default: Any = None) -> Any:
         """Obtém valor de configuração"""
@@ -100,18 +117,20 @@ class ConfigManager:
     def save(self):
         """Salva configurações no arquivo"""
         try:
-            config_dir = os.path.dirname(self.config_file)
-            os.makedirs(config_dir, exist_ok=True)
-            
-            with open(self.config_file, 'w', encoding='utf-8') as f:
-                json.dump(self.config, f, indent=2, ensure_ascii=False)
+            if self.config_file:
+                config_dir = os.path.dirname(self.config_file)
+                os.makedirs(config_dir, exist_ok=True)
+                
+                with open(self.config_file, 'w', encoding='utf-8') as f:
+                    json.dump(self.config, f, indent=2, ensure_ascii=False)
+                
+                logger.info(f"Configurações salvas em {self.config_file}")
         except Exception as e:
             logger.error(f"Erro ao salvar configurações: {e}")
     
     def get_font_config(self) -> Dict[str, Any]:
         """Obtém configurações de fonte"""
         return self.config.get('font', {})
-    
-    def get_translation_config(self) -> Dict[str, Any]:
-        """Obtém configurações de tradução"""
-        return self.config.get('translation', {})
+
+# Instância global (não inicializada automaticamente)
+config_manager = ConfigManager()
