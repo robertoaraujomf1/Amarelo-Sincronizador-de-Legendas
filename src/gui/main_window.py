@@ -1,348 +1,347 @@
 import os
-import sys
-from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                               QPushButton, QLabel, QFileDialog, QTextEdit, 
-                               QProgressBar, QCheckBox, QGroupBox, QSplitter,
-                               QTableWidget, QTableWidgetItem, QHeaderView)
-from PySide6.QtCore import Qt, QThread, Signal, Slot
-from PySide6.QtGui import QFont, QColor
+import json
+# Alterado para PyQt6
+from PyQt6.QtWidgets import (QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton,
+                             QLabel, QTextEdit, QGroupBox, QCheckBox, QComboBox, QSpinBox,
+                             QColorDialog, QListWidget, QListWidgetItem, QProgressBar,
+                             QMessageBox, QFileDialog, QSplitter, QTabWidget, QLineEdit,
+                             QFormLayout, QDialog, QDialogButtonBox, QScrollArea)
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, pyqtSlot, QTimer
+from PyQt6.QtGui import QFont, QColor, QTextCursor, QIcon
 
-from ..core.workflow_manager import WorkflowManager
-from ..utils.config_manager import ConfigManager
-from .progress_dialog import ProgressDialog
+# Mantendo seus imports de lógica
+from src.core.workflow_manager import WorkflowManager
+from src.core.file_matcher import find_video_subtitle_pairs
+# Nota: Certifique-se que estes diálogos abaixo também foram/serão convertidos para PyQt6
+from src.gui.progress_dialog import ProgressDialog
+from src.gui.settings_dialog import SettingsDialog
+from src.gui.theme_manager import ThemeManager
+from src.utils.config_manager import ConfigManager
+from src.utils.language_manager import LanguageManager
 
-class ProcessingThread(QThread):
-    """Thread para processamento em segundo plano"""
-    progress_update = Signal(str, int)
-    preview_update = Signal(list, str)
-    finished = Signal(dict)
-    error = Signal(str)
-    
-    def __init__(self, workflow_manager, video_paths, subtitle_paths, translate, merge):
-        super().__init__()
-        self.workflow_manager = workflow_manager
-        self.video_paths = video_paths
-        self.subtitle_paths = subtitle_paths
-        self.translate = translate
-        self.merge = merge
-    
-    def run(self):
-        try:
-            # Configurar callbacks
-            self.workflow_manager.set_preview_callback(
-                lambda subs, stage: self.preview_update.emit(subs, stage)
-            )
-            
-            # Processar arquivos
-            result = self.workflow_manager.process_files(
-                self.video_paths, 
-                self.subtitle_paths,
-                self.translate,
-                self.merge
-            )
-            
-            self.finished.emit(result)
-            
-        except Exception as e:
-            self.error.emit(str(e))
+class FontSettingsDialog(QDialog):
+    """Diálogo para configuração da fonte"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Configurações da Fonte")
+        self.setModal(True)
+        self.init_ui()
+        
+    def init_ui(self):
+        layout = QVBoxLayout()
+        form_layout = QFormLayout()
+        
+        self.font_size_spin = QSpinBox()
+        self.font_size_spin.setRange(8, 72)
+        self.font_size_spin.setValue(20)
+        form_layout.addRow("Tamanho da fonte:", self.font_size_spin)
+        
+        self.font_color_button = QPushButton("Selecionar Cor")
+        self.font_color_button.clicked.connect(self.select_color)
+        self.font_color = QColor(255, 255, 0) 
+        form_layout.addRow("Cor da fonte:", self.font_color_button)
+        
+        self.bold_checkbox = QCheckBox("Negrito")
+        form_layout.addRow("Estilo:", self.bold_checkbox)
+        
+        layout.addLayout(form_layout)
+        
+        # PyQt6 usa QDialogButtonBox.StandardButton
+        buttons = QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        button_box = QDialogButtonBox(buttons)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+        
+        self.setLayout(layout)
+        
+    def select_color(self):
+        color = QColorDialog.getColor(self.font_color, self)
+        if color.isValid():
+            self.font_color = color
 
 class MainWindow(QMainWindow):
-    """Janela principal da aplicação"""
+    """Janela principal do aplicativo"""
     
-    def __init__(self, config):
+    log_signal = pyqtSignal(str)
+    subtitle_signal = pyqtSignal(dict)
+    progress_signal = pyqtSignal(int)
+    
+    def __init__(self, config_manager):
         super().__init__()
-        self.config = config
-        self.video_files = []
-        self.subtitle_files = []
-        self.processing_thread = None
+        self.config_manager = config_manager
+        self.language_manager = LanguageManager(config_manager)
+        self.theme_manager = ThemeManager()
+        self.workflow_manager = None
+        self.worker_thread = None
+        self.current_directory = "" # Inicializado
+        self.font_settings = {
+            'size': 20,
+            'color': QColor(255, 255, 0),
+            'bold': False
+        }
         
-        self.setup_ui()
+        self.init_ui()
+        self.load_settings()
+        self.apply_theme()
+        
+    def init_ui(self):
         self.setWindowTitle("Amarelo Legendas")
         self.resize(1200, 800)
-    
-    def setup_ui(self):
-        """Configura a interface do usuário"""
+        
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        
         main_layout = QVBoxLayout(central_widget)
         
-        # Painel superior: Controles
-        control_panel = self.create_control_panel()
-        main_layout.addWidget(control_panel)
+        toolbar = self.create_toolbar()
+        main_layout.addWidget(toolbar)
         
-        # Splitter principal: Lista de arquivos + Pré-visualização
-        splitter = QSplitter(Qt.Horizontal)
+        # PyQt6: Qt.Orientation.Horizontal
+        splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # Painel esquerdo: Lista de arquivos
-        file_panel = self.create_file_panel()
-        splitter.addWidget(file_panel)
+        left_panel = self.create_left_panel()
+        splitter.addWidget(left_panel)
         
-        # Painel direito: Pré-visualização
-        preview_panel = self.create_preview_panel()
-        splitter.addWidget(preview_panel)
+        right_panel = self.create_right_panel()
+        splitter.addWidget(right_panel)
         
-        splitter.setSizes([400, 600])
+        splitter.setSizes([400, 800])
         main_layout.addWidget(splitter)
         
-        # Barra de status
-        self.status_bar = self.statusBar()
+        self.status_label = QLabel("Pronto")
         self.progress_bar = QProgressBar()
-        self.status_bar.addPermanentWidget(self.progress_bar)
-        self.progress_bar.hide()
-    
-    def create_control_panel(self):
-        """Cria painel de controles"""
-        panel = QWidget()
-        layout = QHBoxLayout(panel)
+        self.progress_bar.setVisible(False)
         
-        # Botões de seleção
-        self.btn_select_videos = QPushButton("Selecionar Vídeos")
-        self.btn_select_videos.clicked.connect(self.select_videos)
-        layout.addWidget(self.btn_select_videos)
+        status_layout = QHBoxLayout()
+        status_layout.addWidget(self.status_label)
+        status_layout.addWidget(self.progress_bar)
+        main_layout.addLayout(status_layout)
         
-        self.btn_select_subtitles = QPushButton("Selecionar Legendas")
-        self.btn_select_subtitles.clicked.connect(self.select_subtitles)
-        layout.addWidget(self.btn_select_subtitles)
+        self.log_signal.connect(self.update_log)
+        self.subtitle_signal.connect(self.add_subtitle_preview)
+        self.progress_signal.connect(self.update_progress)
         
-        # Opções
-        self.cb_translate = QCheckBox("Traduzir")
-        layout.addWidget(self.cb_translate)
+    def create_toolbar(self):
+        toolbar = QWidget()
+        layout = QHBoxLayout(toolbar)
+        layout.setContentsMargins(0, 0, 0, 0)
         
-        self.cb_merge = QCheckBox("Mesclar com vídeo")
-        layout.addWidget(self.cb_merge)
+        self.select_dir_btn = QPushButton("Selecionar Diretório")
+        self.select_dir_btn.clicked.connect(self.select_directory)
+        layout.addWidget(self.select_dir_btn)
         
-        # Botão processar
-        self.btn_process = QPushButton("Processar")
-        self.btn_process.clicked.connect(self.start_processing)
-        self.btn_process.setStyleSheet("background-color: #4CAF50; color: white; padding: 8px;")
-        layout.addWidget(self.btn_process)
+        self.font_settings_btn = QPushButton("Configurar Fonte")
+        self.font_settings_btn.clicked.connect(self.show_font_settings)
+        layout.addWidget(self.font_settings_btn)
+        
+        self.settings_btn = QPushButton("Configurações")
+        self.settings_btn.clicked.connect(self.show_settings)
+        layout.addWidget(self.settings_btn)
+        
+        self.open_output_btn = QPushButton("Abrir Saída")
+        self.open_output_btn.clicked.connect(self.open_output_folder)
+        layout.addWidget(self.open_output_btn)
         
         layout.addStretch()
-        
-        return panel
-    
-    def create_file_panel(self):
-        """Cria painel de listagem de arquivos"""
-        panel = QGroupBox("Arquivos Selecionados")
+        return toolbar
+
+    def create_left_panel(self):
+        panel = QWidget()
         layout = QVBoxLayout(panel)
         
-        # Tabela de vídeos
-        self.video_table = QTableWidget()
-        self.video_table.setColumnCount(2)
-        self.video_table.setHorizontalHeaderLabels(["Vídeo", "Status"])
-        self.video_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        layout.addWidget(QLabel("Vídeos:"))
-        layout.addWidget(self.video_table)
+        config_group = QGroupBox("Configurações")
+        config_layout = QVBoxLayout()
         
-        # Tabela de legendas
-        self.subtitle_table = QTableWidget()
-        self.subtitle_table.setColumnCount(2)
-        self.subtitle_table.setHorizontalHeaderLabels(["Legenda", "Status"])
-        self.subtitle_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        layout.addWidget(QLabel("Legendas:"))
-        layout.addWidget(self.subtitle_table)
+        self.dir_label = QLabel("Nenhum diretório selecionado")
+        self.dir_label.setWordWrap(True)
+        config_layout.addWidget(self.dir_label)
         
+        self.translate_checkbox = QCheckBox("Traduzir legendas")
+        self.translate_checkbox.stateChanged.connect(self.on_translate_changed)
+        config_layout.addWidget(self.translate_checkbox)
+        
+        self.language_combo = QComboBox()
+        # Adicionando itens com userData de forma compatível
+        languages = [
+            ("Português (Brasil)", "pt-BR"), ("Inglês (EUA)", "en-US"),
+            ("Espanhol", "es-ES"), ("Francês", "fr-FR"),
+            ("Alemão", "de-DE"), ("Japonês", "ja-JP"), ("Coreano", "ko-KR")
+        ]
+        for text, data in languages:
+            self.language_combo.addItem(text, data)
+            
+        self.language_combo.setEnabled(False)
+        config_layout.addWidget(QLabel("Idioma de destino:"))
+        config_layout.addWidget(self.language_combo)
+        
+        self.merge_checkbox = QCheckBox("Mesclar legendas no vídeo")
+        config_layout.addWidget(self.merge_checkbox)
+        
+        config_group.setLayout(config_layout)
+        layout.addWidget(config_group)
+        
+        files_group = QGroupBox("Arquivos no Diretório")
+        files_layout = QVBoxLayout()
+        self.files_list = QListWidget()
+        files_layout.addWidget(self.files_list)
+        files_group.setLayout(files_layout)
+        layout.addWidget(files_group)
+        
+        self.process_btn = QPushButton("Processar")
+        self.process_btn.clicked.connect(self.start_processing)
+        self.process_btn.setEnabled(False)
+        layout.addWidget(self.process_btn)
+        
+        layout.addStretch()
         return panel
-    
-    def create_preview_panel(self):
-        """Cria painel de pré-visualização"""
-        panel = QGroupBox("Pré-visualização da Legenda")
+
+    def create_right_panel(self):
+        panel = QWidget()
         layout = QVBoxLayout(panel)
+        tabs = QTabWidget()
         
-        # Status da pré-visualização
-        self.preview_status = QLabel("Nenhuma pré-visualização disponível")
-        layout.addWidget(self.preview_status)
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        tabs.addTab(self.log_text, "Log")
         
-        # Tabela de pré-visualização
-        self.preview_table = QTableWidget()
-        self.preview_table.setColumnCount(3)
-        self.preview_table.setHorizontalHeaderLabels(["Tempo", "Duração", "Texto"])
-        self.preview_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
-        self.preview_table.setAlternatingRowColors(True)
-        layout.addWidget(self.preview_table)
-        
-        # Área de texto para visualização completa
         self.preview_text = QTextEdit()
         self.preview_text.setReadOnly(True)
-        self.preview_text.setMaximumHeight(200)
-        layout.addWidget(self.preview_text)
+        tabs.addTab(self.preview_text, "Pré-visualização")
         
+        layout.addWidget(tabs)
         return panel
-    
-    def select_videos(self):
-        """Seleciona arquivos de vídeo"""
-        files, _ = QFileDialog.getOpenFileNames(
-            self,
-            "Selecionar Vídeos",
-            "",
-            "Vídeos (*.mp4 *.avi *.mkv *.mov *.wmv *.flv);;Todos os arquivos (*.*)"
-        )
-        
-        if files:
-            self.video_files = files
-            self.update_file_tables()
-    
-    def select_subtitles(self):
-        """Seleciona arquivos de legenda"""
-        files, _ = QFileDialog.getOpenFileNames(
-            self,
-            "Selecionar Legendas",
-            "",
-            "Legendas (*.srt *.ass *.ssa *.vtt *.sub);;Todos os arquivos (*.*)"
-        )
-        
-        if files:
-            self.subtitle_files = files
-            self.update_file_tables()
-    
-    def update_file_tables(self):
-        """Atualiza tabelas de arquivos"""
-        # Atualizar tabela de vídeos
-        self.video_table.setRowCount(len(self.video_files))
-        for i, file_path in enumerate(self.video_files):
-            file_name = os.path.basename(file_path)
-            self.video_table.setItem(i, 0, QTableWidgetItem(file_name))
-            self.video_table.setItem(i, 1, QTableWidgetItem("Pronto"))
-        
-        # Atualizar tabela de legendas
-        self.subtitle_table.setRowCount(len(self.subtitle_files))
-        for i, file_path in enumerate(self.subtitle_files):
-            file_name = os.path.basename(file_path)
-            self.subtitle_table.setItem(i, 0, QTableWidgetItem(file_name))
-            self.subtitle_table.setItem(i, 1, QTableWidgetItem("Pronto"))
-    
+
+    def select_directory(self):
+        directory = QFileDialog.getExistingDirectory(self, "Selecionar Diretório")
+        if directory:
+            self.current_directory = directory
+            self.dir_label.setText(f"Diretório: {directory}")
+            self.scan_directory(directory)
+            self.process_btn.setEnabled(True)
+            
+    def scan_directory(self, directory):
+        self.files_list.clear()
+        try:
+            pairs = find_video_subtitle_pairs(directory)
+            for video_path, subtitle_path in pairs:
+                video_name = os.path.basename(video_path)
+                status = "✓" if subtitle_path else "📹"
+                sub_info = f" → {os.path.basename(subtitle_path)}" if subtitle_path else " (sem legenda)"
+                
+                item = QListWidgetItem(f"{status} {video_name}{sub_info}")
+                # PyQt6: Qt.ItemDataRole.UserRole
+                item.setData(Qt.ItemDataRole.UserRole, (video_path, subtitle_path))
+                self.files_list.addItem(item)
+                
+            self.log_signal.emit(f"Encontrados {len(pairs)} vídeos no diretório")
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Erro ao escanear: {e}")
+
+    def show_font_settings(self):
+        dialog = FontSettingsDialog(self)
+        if dialog.exec(): # Removido o underscore
+            self.font_settings.update({
+                'size': dialog.font_size_spin.value(),
+                'color': dialog.font_color,
+                'bold': dialog.bold_checkbox.isChecked()
+            })
+            self.log_signal.emit(f"Fonte atualizada.")
+
+    def on_translate_changed(self, state):
+        # PyQt6: compara com o valor inteiro ou usa o enum
+        self.language_combo.setEnabled(state == 2) # 2 é Checked
+
     def start_processing(self):
-        """Inicia o processamento"""
-        if not self.video_files:
-            self.show_error("Selecione pelo menos um arquivo de vídeo")
-            return
-        
-        # Desabilitar botões durante processamento
-        self.btn_process.setEnabled(False)
-        self.btn_select_videos.setEnabled(False)
-        self.btn_select_subtitles.setEnabled(False)
-        
-        # Mostrar barra de progresso
-        self.progress_bar.show()
-        self.progress_bar.setValue(0)
-        
-        # Criar workflow manager
-        workflow_manager = WorkflowManager(self.config)
-        
-        # Criar e iniciar thread de processamento
-        self.processing_thread = ProcessingThread(
-            workflow_manager,
-            self.video_files,
-            self.subtitle_files if self.subtitle_files else None,
-            self.cb_translate.isChecked(),
-            self.cb_merge.isChecked()
-        )
-        
-        # Conectar sinais
-        self.processing_thread.progress_update.connect(self.update_progress)
-        self.processing_thread.preview_update.connect(self.update_preview)
-        self.processing_thread.finished.connect(self.processing_finished)
-        self.processing_thread.error.connect(self.processing_error)
-        
-        self.processing_thread.start()
-    
-    @Slot(str, int)
-    def update_progress(self, message, progress):
-        """Atualiza barra de progresso"""
-        self.status_bar.showMessage(message)
-        self.progress_bar.setValue(progress)
-    
-    @Slot(list, str)
-    def update_preview(self, subtitles, stage):
-        """Atualiza pré-visualização das legendas"""
-        self.preview_status.setText(f"Pré-visualização: {stage}")
-        
-        # Atualizar tabela
-        self.preview_table.setRowCount(len(subtitles))
-        
-        for i, sub in enumerate(subtitles):
-            # Formatar tempo
-            start_time = self.format_time(sub.get('start', 0))
-            end_time = self.format_time(sub.get('end', 0))
-            duration = sub.get('end', 0) - sub.get('start', 0)
+        if self.files_list.count() == 0: return
             
-            # Adicionar à tabela
-            self.preview_table.setItem(i, 0, QTableWidgetItem(f"{start_time} → {end_time}"))
-            self.preview_table.setItem(i, 1, QTableWidgetItem(f"{duration:.1f}s"))
-            self.preview_table.setItem(i, 2, QTableWidgetItem(sub.get('text', '')))
+        config = {
+            'directory': self.current_directory,
+            'translate': self.translate_checkbox.isChecked(),
+            'target_language': self.language_combo.currentData(),
+            'merge': self.merge_checkbox.isChecked(),
+            'font_settings': self.font_settings,
+            'files': []
+        }
         
-        # Atualizar texto completo
-        self.update_preview_text(subtitles)
-    
-    def update_preview_text(self, subtitles):
-        """Atualiza área de texto da pré-visualização"""
-        text = ""
-        for sub in subtitles[:50]:  # Mostrar apenas primeiras 50 legendas
-            start_time = self.format_time(sub.get('start', 0))
-            end_time = self.format_time(sub.get('end', 0))
-            text += f"[{start_time} --> {end_time}]\n{sub.get('text', '')}\n\n"
+        for i in range(self.files_list.count()):
+            item = self.files_list.item(i)
+            v_path, s_path = item.data(Qt.ItemDataRole.UserRole)
+            config['files'].append({
+                'video_path': v_path,
+                'subtitle_path': s_path,
+                'has_subtitle': bool(s_path)
+            })
         
-        if len(subtitles) > 50:
-            text += f"\n... e mais {len(subtitles) - 50} legendas"
+        self.worker_thread = QThread()
+        self.workflow_manager = WorkflowManager(config)
+        self.workflow_manager.moveToThread(self.worker_thread)
         
-        self.preview_text.setText(text)
-    
-    def format_time(self, seconds):
-        """Formata segundos para formato HH:MM:SS,mmm"""
-        hours = int(seconds // 3600)
-        minutes = int((seconds % 3600) // 60)
-        secs = int(seconds % 60)
-        millis = int((seconds - int(seconds)) * 1000)
+        self.workflow_manager.log_signal.connect(self.log_signal.emit)
+        self.workflow_manager.subtitle_signal.connect(self.subtitle_signal.emit)
+        self.workflow_manager.progress_signal.connect(self.progress_signal.emit)
+        self.workflow_manager.finished.connect(self.on_processing_finished)
         
-        return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
-    
-    @Slot(dict)
-    def processing_finished(self, result):
-        """Processamento concluído"""
-        self.btn_process.setEnabled(True)
-        self.btn_select_videos.setEnabled(True)
-        self.btn_select_subtitles.setEnabled(True)
-        self.progress_bar.hide()
+        self.worker_thread.started.connect(self.workflow_manager.process_all)
+        self.worker_thread.start()
         
-        if result.get('success'):
-            self.status_bar.showMessage("Processamento concluído com sucesso!", 5000)
-            
-            # Mostrar resultados
-            if result.get('results'):
-                self.show_results(result['results'])
+        self.process_btn.setEnabled(False)
+        self.progress_bar.setVisible(True)
+        self.status_label.setText("Processando...")
+
+    @pyqtSlot(str)
+    def update_log(self, message):
+        self.log_text.append(message)
+        self.log_text.moveCursor(QTextCursor.MoveOperation.End)
+
+    @pyqtSlot(dict)
+    def add_subtitle_preview(self, subtitle_data):
+        text = f"{subtitle_data.get('start')} --> {subtitle_data.get('end')}\n"
+        text += f"{subtitle_data.get('text')}\n{'-'*20}"
+        self.preview_text.append(text)
+
+    @pyqtSlot(int)
+    def update_progress(self, value):
+        self.progress_bar.setValue(value)
+
+    def on_processing_finished(self, results):
+        self.worker_thread.quit()
+        self.worker_thread.wait()
+        self.process_btn.setEnabled(True)
+        self.progress_bar.setVisible(False)
+        self.status_label.setText("Concluído")
+        QMessageBox.information(self, "Fim", "Processamento concluído com sucesso!")
+
+    def open_output_folder(self):
+        path = os.path.abspath("output")
+        if not os.path.exists(path): os.makedirs(path)
+        if os.name == 'nt': os.startfile(path)
+        else: subprocess.Popen(['xdg-open', path])
+
+    def show_settings(self):
+        dialog = SettingsDialog(self.config_manager, self)
+        if dialog.exec(): self.load_settings()
+
+    @pyqtSlot(str, str)
+    def exibir_alerta_atualizacao(self, titulo, mensagem):
+        """Slot para receber o sinal do UpdateChecker"""
+        QMessageBox.information(self, titulo, mensagem)
+
+    def load_settings(self):
+        pass # Implementar lógica de carregamento se necessário
+
+    def apply_theme(self):
+        self.theme_manager.apply_theme(self)
+
+    def closeEvent(self, event):
+        if self.worker_thread and self.worker_thread.isRunning():
+            reply = QMessageBox.question(self, "Sair?", "Processo ativo. Sair mesmo assim?",
+                                       QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if reply == QMessageBox.StandardButton.Yes:
+                if self.workflow_manager: self.workflow_manager.stop_processing = True
+                self.worker_thread.quit()
+                self.worker_thread.wait()
+                event.accept()
+            else:
+                event.ignore()
         else:
-            errors = "\n".join(result.get('errors', []))
-            self.show_error(f"Erros encontrados:\n{errors}")
-    
-    @Slot(str)
-    def processing_error(self, error_message):
-        """Erro no processamento"""
-        self.btn_process.setEnabled(True)
-        self.btn_select_videos.setEnabled(True)
-        self.btn_select_subtitles.setEnabled(True)
-        self.progress_bar.hide()
-        
-        self.show_error(f"Erro no processamento: {error_message}")
-    
-    def show_results(self, results):
-        """Mostra resultados do processamento"""
-        message = "Processamento concluído:\n\n"
-        
-        for video_path, result in results.items():
-            video_name = os.path.basename(video_path)
-            subtitle_files = result.get('subtitle_files', {})
-            
-            message += f"• {video_name}:\n"
-            
-            for format_name, file_path in subtitle_files.items():
-                if os.path.exists(file_path):
-                    message += f"  ✓ {format_name}: {os.path.basename(file_path)}\n"
-        
-        # Aqui poderia abrir uma caixa de diálogo com os resultados
-        self.status_bar.showMessage(message, 10000)
-    
-    def show_error(self, message):
-        """Mostra mensagem de erro"""
-        # Em uma implementação completa, usar QMessageBox
-        self.status_bar.showMessage(f"Erro: {message}", 10000)
+            event.accept()

@@ -1,177 +1,127 @@
-import os
-import logging
-from typing import List, Dict, Optional
+import requests
+import time
+import random
+# Alterado para PyQt6
+from PyQt6.QtCore import QObject, pyqtSignal
 
-from src.core.subtitle_generator import SubtitleGenerator
-
-logger = logging.getLogger(__name__)
-
-class Translator:  # Renomeado de SubtitleTranslator para Translator
-    def __init__(self, config=None):
-        self.config = config or {}
-        self.api_key = os.getenv("OPENAI_API_KEY")
-        self.generator = SubtitleGenerator(config)
+class Translator(QObject):
+    """Componente de Tradução (Google / DeepL)"""
+    
+    # Sinal para atualizar a barra de progresso específica da tradução
+    progress_signal = pyqtSignal(float)
+    
+    def __init__(self, service='google'):
+        super().__init__()
+        self.service = service
+        self.session = requests.Session()
+        # User-agent para evitar bloqueios simples do Google
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        })
         
-    def translate_text(self, text: str, source_language: str, target_language: str) -> str:
-        """
-        Implementação simples usando OpenAI Chat Completions
-        """
-        if not self.api_key:
-            raise RuntimeError("OPENAI_API_KEY não definida")
-
-        from openai import OpenAI
-        client = OpenAI(api_key=self.api_key)
-
-        # Mapear códigos de idioma para nomes
-        lang_names = {
-            "pt_BR": "português brasileiro",
-            "en_US": "inglês americano",
-            "es_ES": "espanhol",
-            "fr_FR": "francês",
-            "de_DE": "alemão",
-            "ja_JP": "japonês",
-            "ko_KR": "coreano",
-            "pt_PT": "português de Portugal",
-            "pt": "português",
-            "en": "inglês",
-            "es": "espanhol",
-            "fr": "francês",
-            "de": "alemão",
-            "ja": "japonês",
-            "ko": "coreano"
-        }
+    def translate_batch(self, subtitles, target_language, source_language='auto'):
+        """Traduz uma lista de dicionários de legenda"""
+        translated_list = []
+        total = len(subtitles)
         
-        source_name = lang_names.get(source_language, source_language)
-        target_name = lang_names.get(target_language, target_language)
-
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": f"Você é um tradutor profissional. Traduza o texto de {source_name} para {target_name}, mantendo o sentido, naturalidade e contexto."
-                },
-                {
-                    "role": "user",
-                    "content": text
-                }
-            ],
-            temperature=0.3
-        )
-
-        return response.choices[0].message.content.strip()
-
-    def translate(self, srt_content: str, source_language: str, target_language: str) -> str:
-        """
-        Traduz conteúdo SRT de um idioma para outro.
+        # O código de idioma do Google para PT-BR é 'pt'
+        target_lang_code = target_language.split('-')[0]
         
-        Args:
-            srt_content: Conteúdo SRT como string
-            source_language: Código do idioma de origem (ex: "pt_BR")
-            target_language: Código do idioma de destino (ex: "en_US")
-        
-        Returns:
-            Conteúdo SRT traduzido
-        """
-        if source_language == target_language:
-            return srt_content
-
-        # Parse do SRT
-        subtitles = self.generator.parse_srt(srt_content)
-        
-        if not subtitles:
-            return srt_content
-
-        # Traduz cada legenda
-        for sub in subtitles:
-            if sub["text"].strip():
-                sub["text"] = self.translate_text(
-                    sub["text"],
-                    source_language,
-                    target_language
+        for i, subtitle in enumerate(subtitles):
+            try:
+                original_text = subtitle.get('text', '')
+                
+                # Tradução do texto
+                translated_text = self.translate_text(
+                    original_text, 
+                    target_lang_code, 
+                    source_language
                 )
+                
+                # Monta o novo objeto preservando tempos
+                entry = {
+                    'start': subtitle['start'],
+                    'end': subtitle['end'],
+                    'original_text': original_text,
+                    'text': translated_text
+                }
+                
+                translated_list.append(entry)
+                
+                # Emite progresso (0 a 100)
+                progress = ((i + 1) / total) * 100
+                self.progress_signal.emit(progress)
+                
+                # Delay randômico para simular comportamento humano e evitar IP Ban
+                if self.service == 'google':
+                    time.sleep(random.uniform(0.2, 0.5))
+                
+            except Exception as e:
+                # Fallback: Se falhar, mantém o original para não quebrar o fluxo
+                translated_list.append({
+                    'start': subtitle['start'],
+                    'end': subtitle['end'],
+                    'original_text': subtitle.get('text', ''),
+                    'text': f"[Erro] {subtitle.get('text', '')}"
+                })
+                
+        return translated_list
+        
+    def translate_text(self, text, target_language, source_language='auto'):
+        """Seleciona o serviço de tradução"""
+        if not text or not text.strip():
+            return text
+            
+        if self.service == 'deepl':
+            return self._translate_deepl(text, target_language, source_language)
+        
+        # Padrão: Google
+        return self._translate_google(text, target_language, source_language)
 
-        # Gera o SRT traduzido
-        return self.generator.generate_from_segments(subtitles)
-    
-    def translate_subtitles(self, subtitles: List[Dict], source_lang: str, target_lang: str) -> List[Dict]:
-        """
-        Traduz uma lista de legendas no formato de dicionário.
-        
-        Args:
-            subtitles: Lista de dicionários de legendas
-            source_lang: Idioma de origem
-            target_lang: Idioma de destino
-            
-        Returns:
-            Lista de legendas traduzidas
-        """
-        if source_lang == target_lang:
-            return subtitles
-        
-        translated_subtitles = []
-        
-        for subtitle in subtitles:
-            translated_sub = subtitle.copy()
-            original_text = subtitle.get('text', '')
-            
-            if original_text.strip():
-                try:
-                    translated_text = self.translate_text(
-                        original_text, 
-                        source_lang, 
-                        target_lang
-                    )
-                except Exception as e:
-                    logger.error(f"Erro ao traduzir texto: {e}")
-                    translated_text = f"[ERRO DE TRADUÇÃO] {original_text}"
-            else:
-                translated_text = original_text
-            
-            translated_sub['text'] = translated_text
-            translated_sub['original_text'] = original_text
-            translated_subtitles.append(translated_sub)
-        
-        return translated_subtitles
-    
-    def detect_language(self, text: str) -> str:
-        """
-        Detecta o idioma do texto.
-        
-        Args:
-            text: Texto para detectar idioma
-            
-        Returns:
-            Código do idioma detectado
-        """
-        # Implementação básica de detecção
-        # Em uma implementação real, usaríamos uma biblioteca como langdetect
-        
-        text_lower = text.lower()
-        
-        # Palavras comuns em diferentes idiomas
-        pt_words = ['e', 'o', 'a', 'de', 'do', 'da', 'em', 'que', 'é', 'á', 'ã', 'õ', 'ç']
-        en_words = ['the', 'and', 'to', 'of', 'a', 'in', 'that', 'is', 'it', 'for']
-        es_words = ['el', 'la', 'de', 'que', 'y', 'en', 'un', 'es', 'por', 'con']
-        fr_words = ['le', 'la', 'de', 'et', 'à', 'en', 'un', 'une', 'des', 'que']
-        
-        pt_count = sum(1 for word in pt_words if word in text_lower)
-        en_count = sum(1 for word in en_words if word in text_lower)
-        es_count = sum(1 for word in es_words if word in text_lower)
-        fr_count = sum(1 for word in fr_words if word in text_lower)
-        
-        counts = {
-            'pt': pt_count,
-            'en': en_count,
-            'es': es_count,
-            'fr': fr_count
+    def _translate_google(self, text, target_lang, source_lang):
+        """Implementação robusta usando a API de tradução do Google (Client gtx)"""
+        url = "https://translate.googleapis.com/translate_a/single"
+        params = {
+            'client': 'gtx',
+            'sl': source_lang,
+            'tl': target_lang,
+            'dt': 't',
+            'q': text
         }
         
-        # Retornar o idioma com mais correspondências
-        detected = max(counts.items(), key=lambda x: x[1])
+        try:
+            response = self.session.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            
+            result = response.json()
+            # O Google retorna uma lista aninhada onde result[0] contém as partes do texto
+            if result and result[0]:
+                full_translation = "".join([part[0] for part in result[0] if part[0]])
+                return full_translation
+            return text
+        except Exception:
+            return f"Error: {text}"
+
+    def _translate_deepl(self, text, target_lang, source_lang):
+        """Implementação para DeepL API (Requer chave de API)"""
+        # Exemplo de URL para API gratuita
+        url = "https://api-free.deepl.com/v2/translate"
         
-        # Se não houver correspondências significativas, usar inglês como padrão
-        if detected[1] < 1:
-            return 'en'
+        # Nota: Idealmente, carregar do seu ConfigManager
+        api_key = "SUA_CHAVE_AQUI" 
         
-        return detected[0]
+        if api_key == "SUA_CHAVE_AQUI":
+            return self._translate_google(text, target_lang, source_lang)
+
+        data = {
+            'auth_key': api_key,
+            'text': text,
+            'target_lang': target_lang.upper(),
+            'source_lang': source_lang.upper() if source_lang != 'auto' else None
+        }
+        
+        try:
+            res = self.session.post(url, data=data, timeout=10)
+            return res.json()['translations'][0]['text']
+        except:
+            return self._translate_google(text, target_lang, source_lang)

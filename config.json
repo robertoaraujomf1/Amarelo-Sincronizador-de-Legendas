@@ -1,0 +1,29 @@
+{
+  "general": {
+    "output_directory": "output",
+    "temp_directory": "temp",
+    "language": "pt-BR",
+    "theme": "dark"
+  },
+  "transcription": {
+    "model_size": "base",
+    "device": "auto",
+    "language_detection": true
+  },
+  "translation": {
+    "service": "google",
+    "deepl_api_key": "",
+    "google_fallback": true
+  },
+  "subtitle": {
+    "default_font_size": 20,
+    "default_font_color": "#FFFF00",
+    "default_bold": false,
+    "default_format": "srt"
+  },
+  "video": {
+    "merge_subtitles": true,
+    "preserve_quality": true,
+    "output_format": "mp4"
+  }
+}

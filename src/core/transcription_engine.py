@@ -1,115 +1,100 @@
+import whisper
+import torch
+import numpy as np
 import os
-import logging
-import tempfile
-import subprocess
-from typing import Dict, Any
+# Alterado para PyQt6
+from PyQt6.QtCore import QObject, pyqtSignal
 
-logger = logging.getLogger(__name__)
+class TranscriptionEngine(QObject):
+    """Motor de transcrição usando OpenAI Whisper (IA)"""
+    
+    # Sinal para enviar a porcentagem de progresso (0.0 a 100.0)
+    progress_signal = pyqtSignal(float)
+    
+    def __init__(self, model_size='base', device=None):
+        super().__init__()
+        
+        # Seleção automática de hardware (GPU vs CPU)
+        if device is None:
+            self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        else:
+            self.device = device
+            
+        self.model_size = model_size
+        self.model = None
+        
+    def load_model(self):
+        """Carrega o modelo na memória apenas quando necessário"""
+        if self.model is None:
+            # Opções de tamanho: 'tiny', 'base', 'small', 'medium', 'large'
+            self.model = whisper.load_model(self.model_size, device=self.device)
+        return self.model
+        
+    def transcribe(self, audio_path, language=None):
+        """
+        Converte áudio em uma lista de segmentos com tempo e texto
+        """
+        if not os.path.exists(audio_path):
+            raise FileNotFoundError(f"Arquivo de áudio não encontrado: {audio_path}")
 
-class TranscriptionEngine:
-    """Motor de transcrição de áudio para texto"""
-    
-    def __init__(self, config):
-        self.config = config
-        self.transcription_config = config.get('transcription', {})
-        
-    def transcribe(self, video_path: str, video_info: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Transcreve o áudio de um vídeo para texto.
-        
-        Args:
-            video_path: Caminho do arquivo de vídeo
-            video_info: Informações do vídeo
-            
-        Returns:
-            Dicionário com a transcrição
-        """
-        logger.info(f"Iniciando transcrição do vídeo: {os.path.basename(video_path)}")
-        
         try:
-            # Extrair áudio do vídeo
-            audio_file = self._extract_audio(video_path)
+            model = self.load_model()
             
-            # Aqui você implementaria a lógica real de transcrição
-            # Por enquanto, vamos simular com um resultado de exemplo
-            transcription = self._simulate_transcription(audio_file, video_info)
+            # Melhora a performance em GPUs NVIDIA
+            use_fp16 = True if self.device == 'cuda' else False
             
-            # Limpar arquivo temporário
-            if os.path.exists(audio_file):
-                os.remove(audio_file)
+            # Configurações do Whisper
+            options = {
+                'language': language,
+                'task': 'transcribe',
+                'fp16': use_fp16,
+                'verbose': False
+            }
             
-            logger.info(f"Transcrição concluída para: {os.path.basename(video_path)}")
-            return transcription
+            # Executa a transcrição (este processo é demorado)
+            # O Whisper por padrão não emite progresso linha a linha facilmente,
+            # por isso emitimos um sinal de "início" e "fim" aqui.
+            self.progress_signal.emit(10.0)
             
-        except Exception as e:
-            logger.error(f"Erro na transcrição: {e}")
-            raise
-    
-    def _extract_audio(self, video_path: str) -> str:
-        """Extrai áudio do vídeo para um arquivo temporário"""
-        temp_audio = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
-        temp_audio.close()
-        
-        cmd = [
-            'ffmpeg',
-            '-i', video_path,
-            '-vn',  # No video
-            '-acodec', 'pcm_s16le',
-            '-ar', '16000',
-            '-ac', '1',
-            '-y',
-            temp_audio.name
-        ]
-        
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                raise Exception(f"Falha ao extrair áudio: {result.stderr}")
+            result = model.transcribe(audio_path, **options)
             
-            return temp_audio.name
-        except Exception as e:
-            if os.path.exists(temp_audio.name):
-                os.remove(temp_audio.name)
-            raise
-    
-    def _simulate_transcription(self, audio_file: str, video_info: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Simula uma transcrição (substituir por Whisper ou outro modelo).
-        
-        Em uma implementação real, você usaria:
-        - Whisper (OpenAI)
-        - Vosk
-        - PocketSphinx
-        - Outro motor de transcrição
-        """
-        duration = video_info.get('duration', 0)
-        
-        # Simulação de segmentos de transcrição
-        segments = []
-        
-        if duration > 0:
-            # Criar segmentos de exemplo a cada 5 segundos
-            segment_count = max(1, int(duration / 5))
-            segment_duration = duration / segment_count
+            # Processa o dicionário bruto do Whisper para o formato do nosso app
+            segments = []
+            total_segments = len(result['segments'])
             
-            for i in range(segment_count):
-                start = i * segment_duration
-                end = min((i + 1) * segment_duration, duration)
-                
+            for i, segment in enumerate(result['segments']):
                 segments.append({
-                    'start': start,
-                    'end': end,
-                    'text': f"Este é o segmento de áudio {i+1} de {segment_count}. [Texto transcrito apareceria aqui].",
-                    'confidence': 0.9
+                    'start': segment['start'],
+                    'end': segment['end'],
+                    'text': segment['text'].strip(),
+                    'confidence': segment.get('avg_logprob', 0.0)
                 })
-        
-        return {
-            'language': 'pt',
-            'segments': segments,
-            'duration': duration,
-            'audio_file': audio_file
-        }
-    
-    def get_supported_languages(self):
-        """Retorna lista de idiomas suportados"""
-        return ['pt', 'en', 'es', 'fr', 'de', 'it', 'ja', 'ko', 'zh']
+                
+                # Atualiza o progresso baseado no processamento dos segmentos extraídos
+                prog = 10.0 + (float(i + 1) / total_segments * 90.0)
+                self.progress_signal.emit(prog)
+            
+            return segments
+            
+        except Exception as e:
+            raise Exception(f"Falha técnica no Whisper: {str(e)}")
+            
+    def detect_language(self, audio_path):
+        """Analisa os primeiros 30 segundos para detectar o idioma original"""
+        try:
+            model = self.load_model()
+            
+            # Carrega e ajusta o áudio para o formato do Whisper (log-Mel spectrogram)
+            audio = whisper.load_audio(audio_path)
+            audio = whisper.pad_or_trim(audio)
+            
+            mel = whisper.log_mel_spectrogram(audio).to(self.device)
+            
+            # Detecta o idioma
+            _, probs = model.detect_language(mel)
+            detected_lang = max(probs, key=probs.get)
+            
+            return detected_lang, probs[detected_lang]
+            
+        except Exception as e:
+            raise Exception(f"Erro ao detectar idioma: {str(e)}")
