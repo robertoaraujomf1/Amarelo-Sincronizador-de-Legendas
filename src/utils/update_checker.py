@@ -49,15 +49,13 @@ class UpdateChecker(QObject):
             pass
             
     def _is_newer_version(self, new_v, current_v):
-        """Compara versões de forma robusta"""
+        """Compara versões convertendo strings para tuplas de inteiros (ex: '1.2.0' -> (1, 2, 0))"""
         try:
-            from packaging import version
-            return version.parse(new_v) > version.parse(current_v)
-        except ImportError:
-            # Fallback: converte "1.2.3" em (1, 2, 3) para comparação numérica correta
-            try:
-                def parse_v(v):
-                    return tuple(map(int, (v.split('.'))))
-                return parse_v(new_v) > parse_v(current_v)
-            except:
-                return new_v > current_v # Último recurso (alfabético)
+            def parse_v(v):
+                # Limpa caracteres não numéricos e divide pelos pontos
+                return tuple(map(int, (v.split('.'))))
+            
+            return parse_v(new_v) > parse_v(current_v)
+        except Exception:
+            # Se a versão não estiver no formato X.X.X, faz comparação simples de texto
+            return new_v > current_v

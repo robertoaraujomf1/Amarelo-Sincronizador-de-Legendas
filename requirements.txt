@@ -1,32 +1,4 @@
-# Transcrição
-openai-whisper>=20231117
-torch>=2.0.0
-torchaudio>=2.0.0
-
-# Tradução
-translators>=3.0.0
-googletrans==4.0.0-rc1
-requests>=2.31.0
-
-# Interface
-PyQt5>=5.15.9
-PyQt5-sip>=12.12.1
-
-# Processamento de vídeo/áudio
-moviepy>=1.0.3
-pydub>=0.25.1
-opencv-python>=4.8.0
-numpy>=1.24.0
-
-# Utilitários
-python-dotenv>=1.0.0
-pysrt>=1.1.2
-chardet>=5.1.0
-distro>=1.8.0
-packaging>=23.0
-tqdm>=4.65.0
-
-# Desenvolvimento
-pytest>=7.0.0
-black>=23.0.0
-flake8>=6.0.0
+PyQt6
+openai-whisper
+deep-translator
+setuptools

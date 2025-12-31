@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
 from src.gui.main_window import MainWindow
 from src.utils.config_manager import ConfigManager
-from src.gui.theme_manager import ThemeManager
+
 
 def main():
     # 1. Cria a aplicação base
@@ -25,11 +25,6 @@ def main():
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
 
-    # 4. Aplica o Tema (Dark Mode por padrão)
-    theme = ThemeManager()
-    # Pega o nome do tema das configs ou usa 'dark' como padrão
-    current_theme = config.get('general', {}).get('theme', 'dark')
-    theme.apply_theme(app, current_theme)
 
     # 5. Inicializa e exibe a Janela Principal
     # Passamos o config_manager para que a janela saiba as preferências
