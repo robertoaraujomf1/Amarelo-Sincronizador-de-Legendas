@@ -6,16 +6,14 @@ from src.core.transcription_engine import TranscriptionEngine
 logger = logging.getLogger(__name__)
 
 class WorkflowManager(QThread):
-    # Sinais definidos para enviar UM valor por vez
     progress_update = pyqtSignal(int)
     preview_update = pyqtSignal(str)
     finished = pyqtSignal(bool, str)
 
     def __init__(self, config_manager):
         super().__init__()
-        self.config = config_manager if config_manager else {}
+        self.config = config_manager
         self.directory = None
-        # Passa a config para o motor evitar erro de NoneType
         self.engine = TranscriptionEngine(config_manager=self.config)
 
     def set_directory(self, directory):
@@ -24,35 +22,64 @@ class WorkflowManager(QThread):
     def run(self):
         try:
             if not self.directory:
-                self.finished.emit(False, "Nenhum diretório selecionado.")
+                self.finished.emit(False, "Diretório não selecionado.")
                 return
 
             videos = [f for f in os.listdir(self.directory) 
                      if f.lower().endswith(('.mp4', '.mkv', '.avi'))]
             
             if not videos:
-                self.finished.emit(False, "Nenhum vídeo encontrado na pasta.")
+                self.finished.emit(False, "Nenhum vídeo encontrado.")
                 return
 
-            total_videos = len(videos)
-            
+            # Mapeamento de cores para códigos Hexadecimal
+            color_map = {
+                "Amarelo": "#FFFF00",
+                "Branco": "#FFFFFF",
+                "Verde": "#00FF00",
+                "Ciano": "#00FFFF"
+            }
+
+            # Captura as preferências da UI salvas no config
+            font_color = color_map.get(self.config.get("font_color", "Amarelo"), "#FFFF00")
+            is_bold = self.config.get("font_bold", True)
+
             for index, video in enumerate(videos):
                 video_path = os.path.join(self.directory, video)
+                self.preview_update.emit(f"Processando: {video}")
                 
-                # Atualiza o texto na interface
-                self.preview_update.emit(f"Processando vídeo {index+1}/{total_videos}: {video}")
-                self.progress_update.emit(int((index / total_videos) * 100))
-                
-                # Executa a transcrição (Motor Whisper)
-                # verbose=False para não sujar o terminal e focar na UI
                 result = self.engine.transcribe(video_path)
                 
-                # Aqui futuramente salvaremos o .srt
-                logger.info(f"Transcrição concluída para {video}")
+                srt_path = os.path.splitext(video_path)[0] + ".srt"
+                
+                # Salva com os estilos aplicados
+                self._save_as_srt(result['segments'], srt_path, font_color, is_bold)
+                
+                self.progress_update.emit(int(((index + 1) / len(videos)) * 100))
 
-            self.progress_update.emit(100)
-            self.finished.emit(True, "Todos os vídeos foram processados!")
+            self.finished.emit(True, "Processamento concluído com sucesso!")
 
         except Exception as e:
-            logger.error(f"Erro crítico no workflow: {e}")
+            logger.error(f"Erro no workflow: {e}")
             self.finished.emit(False, str(e))
+
+    def _save_as_srt(self, segments, srt_path, color, bold):
+        with open(srt_path, "w", encoding="utf-8") as f:
+            for i, segment in enumerate(segments, start=1):
+                start = self._format_time(segment['start'])
+                end = self._format_time(segment['end'])
+                text = segment['text'].strip()
+                
+                # Aplica as Tags de Estilo
+                styled_text = f'<font color="{color}">{text}</font>'
+                if bold:
+                    styled_text = f'<b>{styled_text}</b>'
+                
+                f.write(f"{i}\n{start} --> {end}\n{styled_text}\n\n")
+
+    def _format_time(self, seconds):
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        millis = int((seconds - int(seconds)) * 1000)
+        return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
