@@ -86,7 +86,7 @@ class MainWindow(QMainWindow):
         self.apply_theme()
         
     def init_ui(self):
-        self.setWindowTitle("Amarelo Legendas")
+        self.setWindowTitle("Amarelo Subs")
         self.resize(1200, 800)
         
         central_widget = QWidget()

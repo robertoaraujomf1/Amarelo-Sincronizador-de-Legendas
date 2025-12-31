@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Amarelo Legendas - Aplicativo para transcrição, tradução e sincronização de legendas
+Amarelo Subs - Aplicativo para transcrição, tradução e sincronização de legendas
 Versão completa com instalação automática de dependências e FFmpeg (Padronizado PyQt6)
 """
 
@@ -24,7 +24,7 @@ if SRC_DIR not in sys.path: sys.path.insert(0, SRC_DIR)
 def install_python_dependencies():
     """Instala dependências Python automaticamente"""
     print("=" * 60)
-    print("AMARELO LEGENDAS - Instalação de Dependências")
+    print("Amarelo Subs - Instalação de Dependências")
     print("=" * 60)
     
     # Atualizado para PyQt6 para manter consistência
@@ -93,7 +93,7 @@ def check_environment():
 
 def main():
     try:
-        print("\nAMARELO LEGENDAS - Inicializando...")
+        print("\nAmarelo Subs - Inicializando...")
         
         if not check_environment():
             return 1
@@ -118,7 +118,7 @@ def main():
             return 1
 
         app = QApplication(sys.argv)
-        app.setApplicationName("Amarelo Legendas")
+        app.setApplicationName("Amarelo Subs")
         app.setStyle('Fusion')
         
         config_manager = ConfigManager()

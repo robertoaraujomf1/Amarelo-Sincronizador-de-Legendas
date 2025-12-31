@@ -36,8 +36,10 @@ class ConfigManager:
         self.load()
     
     def _get_default_config(self) -> Dict[str, Any]:
-        """Retorna configuração padrão"""
+        """Retorna configuração padrão do Amarelo Subs"""
         return {
+            'app_name': 'Amarelo Subs',  # Nome fixo da marca
+            'version': '1.0.0',
             'general': {
                 'output_dir': 'output',
                 'language': 'pt_BR',
@@ -56,12 +58,12 @@ class ConfigManager:
             'font': {
                 'name': 'Arial',
                 'size': 20,
-                'color': '#FFFFFF',
+                'color': '#FFFF00', # Sugestão: Amarelo para combinar com a marca!
                 'bold': False,
                 'format_type': 'ass'
             }
         }
-    
+        
     def load(self):
         """Carrega configurações do arquivo"""
         try:
