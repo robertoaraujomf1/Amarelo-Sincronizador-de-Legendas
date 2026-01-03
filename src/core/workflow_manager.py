@@ -1,22 +1,12 @@
 import os
-import time
-import traceback
 from PyQt6.QtCore import QThread, pyqtSignal
-
-# Tentativa de importação robusta
-try:
-    from src.core.transcription_engine import TranscriptionEngine
-    from src.core.translation_engine import TranslationEngine
-    from src.core.subtitle_generator import SubtitleGenerator
-except ImportError:
-    import sys
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from transcription_engine import TranscriptionEngine
-    from translation_engine import TranslationEngine
-    from subtitle_generator import SubtitleGenerator
+from src.core.transcription_engine import TranscriptionEngine
+from src.core.translation_engine import TranslationEngine
+from src.core.subtitle_generator import SubtitleGenerator
 
 class WorkflowManager(QThread):
-    progress_update = pyqtSignal(int)
+    progress_individual = pyqtSignal(int)
+    progress_general = pyqtSignal(int)
     preview_update = pyqtSignal(str)
     finished = pyqtSignal(bool, str)
 
@@ -24,7 +14,6 @@ class WorkflowManager(QThread):
         super().__init__()
         self.config = config
         self.directory = ""
-        # Inicializa aqui para evitar erros de importação tardios
         self.transcriber = TranscriptionEngine(self.config)
         self.translator = TranslationEngine(self.config)
         self.subtitle_gen = SubtitleGenerator(self.config)
@@ -34,42 +23,50 @@ class WorkflowManager(QThread):
 
     def run(self):
         try:
-            if not self.directory or not os.path.exists(self.directory):
-                self.finished.emit(False, "Pasta não encontrada.")
-                return
-
-            exts = ('.mp4', '.mkv', '.avi', '.mov')
-            videos = [f for f in os.listdir(self.directory) if f.lower().endswith(exts)]
+            extensions = ('.mp4', '.mkv', '.avi', '.mov')
+            videos = [f for f in os.listdir(self.directory) if f.lower().endswith(extensions)]
             
             if not videos:
-                self.finished.emit(False, "Nenhum vídeo compatível.")
+                self.finished.emit(False, "Nenhum vídeo encontrado.")
                 return
 
-            for video in videos:
+            total_videos = len(videos)
+            for index, video in enumerate(videos):
                 video_path = os.path.join(self.directory, video)
-                self.preview_update.emit(f"Processando: {video}")
+                self.preview_update.emit(f"<b>🎬 Processando ({index+1}/{total_videos}):</b> {video}")
+                
+                # Reset barra individual para cada vídeo
+                self.progress_individual.emit(0)
 
-                # Transcrição com Progresso (98%)
+                # 1. Transcrição
                 result = self.transcriber.transcribe(
                     video_path, 
-                    progress_callback=self.progress_update.emit,
-                    preview_callback=self.preview_update.emit
+                    progress_callback=self.progress_individual.emit
                 )
 
-                # Tradução
-                target_lang = self.config.get("target_lang", "Original")
-                segments = result.get('segments', [])
+                # --- CORREÇÃO DA TRADUÇÃO AQUI ---
+                # Lemos se está habilitado e qual o idioma usando o padrão do seu ConfigManager
+                is_enabled = self.config.get("translation.enabled", False)
+                target_lang = self.config.get("translation.target_language", "pt")
                 
-                if target_lang != "Original" and segments:
-                    self.preview_update.emit(f"Traduzindo para {target_lang}...")
+                segments = result['segments']
+                
+                if is_enabled:
+                    self.preview_update.emit(f"🌍 Traduzindo para: <b>{target_lang.upper()}</b>...")
+                    # Chama o motor de tradução com os dados corretos
                     segments = self.translator.translate_segments(segments, target_lang)
+                else:
+                    self.preview_update.emit("📄 Mantendo idioma original...")
+                # --------------------------------
 
-                # Gerar SRT
+                # 3. Geração de SRT Estilizado
                 srt_path = os.path.join(self.directory, os.path.splitext(video)[0] + ".srt")
                 self.subtitle_gen.generate(segments, srt_path)
                 
-            self.finished.emit(True, "Processo concluído com sucesso!")
-
+                # Atualiza Barra Geral
+                geral_percent = int(((index + 1) / total_videos) * 100)
+                self.progress_general.emit(geral_percent)
+                
+            self.finished.emit(True, "Processamento em lote concluído!")
         except Exception as e:
-            print(f"DEBUG: {traceback.format_exc()}")
-            self.finished.emit(False, str(e))
+            self.finished.emit(False, f"Erro: {str(e)}")
