@@ -1,49 +1,72 @@
 import sys
 import os
-from PyQt6.QtWidgets import QApplication
+import ctypes
+import traceback
+from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtCore import Qt
 from src.gui.main_window import MainWindow
 from src.utils.config_manager import ConfigManager
 
-def resource_path(relative_path):
-    """ 
-    Garante que o caminho dos ícones funcione tanto em desenvolvimento 
-    quanto no executável (.exe) gerado pelo PyInstaller.
-    """
-    try:
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
+def exception_hook(exctype, value, tb):
+    """Captura erros fatais e exibe em uma caixa de diálogo."""
+    trcback = ''.join(traceback.format_exception(exctype, value, tb))
+    print(trcback)
+    msg = QMessageBox()
+    msg.setIcon(QMessageBox.Icon.Critical)
+    msg.setText("Ocorreu um erro inesperado:")
+    msg.setInformativeText(str(value))
+    msg.setDetailedText(trcback)
+    msg.setWindowTitle("Erro Fatal")
+    msg.exec()
+    sys.exit(1)
 
-    return os.path.join(base_path, relative_path)
+def apply_windows_taskbar_fix():
+    """Fix para o ícone aparecer na barra de tarefas do Windows."""
+    if sys.platform == "win32":
+        try:
+            myappid = 'yellowsubs.v1.0.0'
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        except Exception:
+            pass
 
 def main():
-    # 1. Ajustes de DPI (Alta Resolução)
-    # Isso evita que a interface fique "embaçada" em monitores 4K ou escalas de 125%/150%
-    if hasattr(Qt, 'ApplicationAttribute'):
-        os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
-        QApplication.setHighDpiScaleFactorRoundingPolicy(
-            Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
-        )
+    # --- CONFIGURAÇÕES PRÉ-INSTÂNCIA (OBRIGATÓRIO SEREM AQUI) ---
+    
+    # 1. Ajuste de DPI - Define como o Qt lida com escalas (125%, 150%, etc)
+    os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
+    
+    # 2. Política de Arredondamento - DEVE vir antes do QApplication
+    # Isso evita que o Qt arredonde 125% para 100% ou 200%, mantendo a nitidez.
+    QApplication.setHighDpiScaleFactorRoundingPolicy(
+        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+    )
 
-    # 2. Criar a instância do App
+    # 3. Hook de exceções para capturar erros de inicialização
+    sys.excepthook = exception_hook
+
+    # 4. Fix do ícone da barra de tarefas
+    apply_windows_taskbar_fix()
+
+    # --- CRIAÇÃO DA INSTÂNCIA ---
+
     app = QApplication(sys.argv)
     app.setApplicationName("Amarelo Subs")
 
-    # 3. Inicializar o Gerenciador de Configurações
-    config = ConfigManager()
+    # 5. Inicializar Configurações
+    try:
+        config = ConfigManager()
+    except Exception as e:
+        QMessageBox.critical(None, "Erro de Configuração", f"Falha ao carregar configurações: {e}")
+        return
 
-    # 4. Criar a Janela Principal
-    # Note: O window.show() foi removido daqui porque o showMaximized() 
-    # já é tratado dentro do __init__ da MainWindow para garantir o modo tela cheia.
+    # 6. Criar e Exibir a Janela Principal
     window = MainWindow(config)
     
-    # Se por algum motivo o sistema operacional ignorar o comando interno,
-    # esta linha abaixo reforça a exibição:
+    # Se a janela não foi mostrada pelo showMaximized no __init__, forçamos aqui
     if not window.isVisible():
         window.show()
 
-    # 5. Executar o loop do programa
+    # 7. Execução do Loop
     sys.exit(app.exec())
 
 if __name__ == "__main__":
